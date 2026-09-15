@@ -42,13 +42,9 @@ jobs:
                python -m pip install "cython==0.29.36" "buildozer==1.5.0"
       
       - name: Build debug APK
-        env:
-           ANDROIDNDK: /usr/local/lib/android/sdk/ndk/27.3.13750724
-           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/27.3.13750724
-           ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/27.3.13750724          
+                  
         run: |
-                 rm -rf ~/.buildozer/android/platform/android-ndk-r28c
-                  yes | buildozer -v android debug
+          yes | buildozer -v android debug
      
               
       - name: Upload APK
