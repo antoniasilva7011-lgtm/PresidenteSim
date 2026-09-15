@@ -32,7 +32,7 @@ android.permissions = INTERNET
 
 # Pin p4a instead of following its moving master branch. This release supports
 # the Python/Kivy combination above and makes the Android toolchain repeatable.
-p4a.branch = 2024.01.21
+p4a.branch = v2024.01.21
 # (str) Presplash of the application
 presplash.filename =
 
