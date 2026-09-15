@@ -82,7 +82,7 @@ android.apptheme = "@android:style/Theme.Material.NoActionBar"
 android.permissions = INTERNET
 
 # (str) Python-for-Android branch to use
-p4a.branch = develop
+p4a.branch = master
 
 [app:ios]
 # iOS is not a target for this V0.1.
