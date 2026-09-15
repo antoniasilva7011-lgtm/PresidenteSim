@@ -20,7 +20,7 @@ source.include_exts = py,json,png,jpg,kv,atlas
 version = 0.1.0
 
 # (str) Supported requirements
-requirements = python3==3.11.9,kivy==2.3.0
+requirements = python3,kivy==2.3.0
 # (str) Presplash of the application
 presplash.filename =
 
