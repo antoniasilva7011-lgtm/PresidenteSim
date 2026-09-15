@@ -30,8 +30,8 @@ android.ndk = 27c
 android.archs = arm64-v8a
 android.permissions = INTERNET
 
-# Buildozer passes p4a.branch to `git clone --branch`, which accepts tags too.
-# Keep the leading "v": v2024.01.21 is the actual upstream release tag.
+# Pin p4a instead of following its moving master branch. This release supports
+# the Python/Kivy combination above and makes the Android toolchain repeatable.
 p4a.branch = v2024.01.21
 # (str) Presplash of the application
 presplash.filename =
