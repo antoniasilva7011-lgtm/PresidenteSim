@@ -67,7 +67,7 @@ android.api = 35
 android.ndk = 27c
 
 # (str) Android architecture to build for
-android.arch = arm64-v8a
+android.archs = arm64-v8a
 
 # (bool) Fullscreen
 fullscreen = 1
