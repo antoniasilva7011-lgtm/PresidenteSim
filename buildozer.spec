@@ -20,7 +20,7 @@ source.include_exts = py,json,png,jpg,kv,atlas
 version = 0.1.0
 
 # (str) Supported requirements
-requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0
+requirements = python3==3.11.9,hostpython3==3.11.9,kivy
 # (str) Presplash of the application
 presplash.filename =
 
@@ -82,7 +82,7 @@ android.apptheme = "@android:style/Theme.Material.NoActionBar"
 android.permissions = INTERNET
 
 # (str) Python-for-Android branch to use
-p4a.branch = master
+p4a.branch = develop
 
 [app:ios]
 # iOS is not a target for this V0.1.
