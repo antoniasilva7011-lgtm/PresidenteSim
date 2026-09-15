@@ -1,0 +1,4 @@
+# python-for-android 2024.01.21 imports pip's pre-25 internal spinner API while
+# preparing its isolated build venv. PIP_CONSTRAINT is inherited by that venv,
+# unlike pinning pip only in the Actions runner environment.
+pip==24.0

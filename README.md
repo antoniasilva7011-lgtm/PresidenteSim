@@ -40,6 +40,9 @@ python main.py
 7. Na seção **Artifacts**, baixe `Presidente-Simulator-V0.1-APK`.
 
 Também é possível criar uma tag `v0.1.0`; o workflow será executado automaticamente.
+Durante a estabilização do empacotamento Android, pushes para a branch `main`
+também iniciam o build. O APK gerado é exclusivamente para aparelhos
+`arm64-v8a`.
 
 ## Observação
 
