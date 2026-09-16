@@ -2,7 +2,7 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.metrics import dp
-from kivy.uix.asyncimage import AsyncImage
+from kivy.uix.image import AsyncImage
 from kivy.uix.button import Button
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.scatter import Scatter
