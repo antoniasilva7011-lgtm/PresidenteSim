@@ -21,20 +21,22 @@ source.exclude_dirs = .git,.github,.p4a
 version = 0.1.0
 
 # (str) Supported requirements
-requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0
+# hostpython3 is an internal build dependency of the python3 recipe and is not
+# an application requirement; p4a selects its matching version automatically.
+requirements = python3==3.11.5,kivy==2.3.0
 
 # Android options must be in [app]. Buildozer 1.5.0 reads the target settings
 # from this section; putting them in [app:android] leaves p4a using defaults.
 android.minapi = 23
-android.api = 35
-android.ndk = 27c
+android.api = 33
+android.ndk = 25b
 android.archs = arm64-v8a
 android.permissions = INTERNET
 
-# Pin p4a instead of following its moving master branch. This release supports
-# the Python/Kivy combination above and makes the Android toolchain repeatable.
+# Keep the Android SDK/NDK and Python recipes on the versions supported by this
+# p4a release instead of patching old recipes to work with a newer NDK.
 p4a.branch = v2024.01.21
-# The workflow prepares this pinned p4a tree and updates only its SDL2 recipe.
+# The workflow prepares this exact tagged source tree.
 p4a.source_dir = .p4a
 # (str) Presplash of the application
 presplash.filename =
