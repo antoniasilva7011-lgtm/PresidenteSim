@@ -117,11 +117,11 @@ class StyledButton(Button):
         super().__init__(**kwargs)
         with self.canvas.after:
             Color(0.08, 0.45, 0.65, 0.75)
-            self.border = Line(rounded_rectangle=(0, 0, 100, 100, 10), width=0.8)
+            self.outline = Line(rounded_rectangle=(0, 0, 100, 100, 10), width=0.8)
         self.bind(pos=self._sync, size=self._sync)
 
     def _sync(self, *_):
-        self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, dp(9))
+        self.outline.rounded_rectangle = (self.x, self.y, self.width, self.height, dp(9))
 
 
 class ScrollText(ScrollView):
