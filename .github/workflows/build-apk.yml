@@ -54,12 +54,41 @@ jobs:
           git clone --depth 1 --branch v2024.01.21 \
             https://github.com/kivy/python-for-android.git .p4a
 
-          # p4a v2024.01.21 pins SDL 2.28.5, whose Android sensor backend uses
-          # ALooper_pollAll. SDL 2.30.11 uses ALooper_pollOnce and builds with NDK r27c.
-          grep -Fq "version = '2.28.5'" .p4a/pythonforandroid/recipes/sdl2/__init__.py
-          sed -i "s/version = '2.28.5'/version = '2.30.11'/" \
+          # The pinned recipe uses double-quoted class attributes and a URL
+          # template. SDL 2.30.11 uses ALooper_pollOnce and builds with NDK r27c.
+          grep -Fq 'version = "2.28.5"' .p4a/pythonforandroid/recipes/sdl2/__init__.py
+          grep -Fq 'url = "https://github.com/libsdl-org/SDL/releases/download/release-{version}/SDL2-{version}.tar.gz"' \
             .p4a/pythonforandroid/recipes/sdl2/__init__.py
-          grep -Fq "version = '2.30.11'" .p4a/pythonforandroid/recipes/sdl2/__init__.py
+          sed -i 's/version = "2.28.5"/version = "2.30.11"/' \
+            .p4a/pythonforandroid/recipes/sdl2/__init__.py
+
+      - name: Validate configured SDL2 release
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          recipe_path = Path(".p4a/pythonforandroid/recipes/sdl2/__init__.py")
+          tree = ast.parse(recipe_path.read_text(encoding="utf-8"), recipe_path)
+          configured = {}
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                  target = node.targets[0]
+                  if isinstance(target, ast.Name) and target.id in {"version", "url"}:
+                      configured[target.id] = ast.literal_eval(node.value)
+
+          expected_version = "2.30.11"
+          if configured.get("version") != expected_version:
+              raise SystemExit(
+                  f"Unexpected SDL2 version: {configured.get('version')!r}"
+              )
+          if "{version}" not in configured.get("url", ""):
+              raise SystemExit(f"Unexpected SDL2 URL template: {configured.get('url')!r}")
+
+          print(f"SDL2 version: {configured['version']}")
+          print(f"SDL2 URL template: {configured['url']}")
+          print(f"SDL2 resolved URL: {configured['url'].format(version=configured['version'])}")
+          PY
 
       - name: Build debug APK
         run: |
