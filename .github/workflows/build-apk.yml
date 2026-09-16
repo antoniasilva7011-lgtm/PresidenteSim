@@ -42,12 +42,6 @@ jobs:
             cmake libffi-dev libssl-dev \
             python3-dev python3-venv wget lbzip2
           sudo ldconfig
-          python - <<'PY'
-          import ctypes
-          import _ctypes
-          print("Runner ctypes OK:", ctypes.__file__)
-          print("Runner _ctypes OK:", _ctypes.__file__)
-          PY
 
       - name: Install Buildozer
         run: |
