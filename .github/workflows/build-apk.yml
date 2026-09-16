@@ -61,7 +61,15 @@ jobs:
             cp -a /usr/local/lib/android/sdk/licenses/. "$ANDROIDSDK/licenses/"
           fi
           yes | "$ANDROIDSDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROIDSDK" --licenses >/dev/null || true
-          "$ANDROIDSDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROIDSDK" "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+          "$ANDROIDSDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROIDSDK" \
+            "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+
+          # Buildozer 1.5.0 can look for the legacy tools/bin location.
+          mkdir -p "$ANDROIDSDK/tools"
+          ln -sfn ../cmdline-tools/latest/bin "$ANDROIDSDK/tools/bin"
+
+          test -x "$ANDROIDSDK/build-tools/33.0.2/aidl"
+          test -x "$ANDROIDSDK/tools/bin/sdkmanager"
 
       - name: Prepare pinned python-for-android
         run: |
