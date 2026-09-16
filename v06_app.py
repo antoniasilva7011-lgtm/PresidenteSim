@@ -1,101 +1,57 @@
+import math
+
 from kivy.clock import Clock
 from kivy.core.window import Window
-from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
+from kivy.graphics import Color, Line, Rectangle
 from kivy.metrics import dp
-from kivy.uix.image import AsyncImage
-from kivy.uix.button import Button
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.image import AsyncImage
+from kivy.uix.label import Label
 from kivy.uix.scatter import Scatter
 from kivy.uix.widget import Widget
 
-from v05_app import (
-    BG,
-    CYAN,
-    GLASS,
-    GREEN,
-    MUTED,
-    TEXT,
-    GameApp as V05GameApp,
-    GlassPanel,
-    MediaMapRoot,
-    SmallButton,
-    label,
-)
+from countries_data import WORLD_COUNTRIES
+from v04_app import TopBar, IconButton, GlassPanel, SmallButton, label
+from v05_app import BG, CYAN, MUTED, MediaDrawer, MediaNewsOverlay, GameApp as V05GameApp, ensure_media_state
 
-APP_NAME = "Presidente Simulator V0.6"
-
-# Public-domain Natural Earth physical world map.
-# Source: https://commons.wikimedia.org/wiki/File:World_map_geographical.jpg
-WORLD_MAP_URL = (
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/"
-    "World_map_geographical.jpg/1280px-World_map_geographical.jpg"
-)
-
-COUNTRY_POINTS = [
-    ("Canada", -106, 57, 1.10), ("Estados Unidos", -100, 38, 1.00), ("Mexico", -102, 23, 1.15),
-    ("Cuba", -79, 21.5, 1.85), ("Colombia", -74, 4, 1.30), ("Venezuela", -66, 7, 1.45),
-    ("Brasil", -52, -14, 1.00), ("Peru", -75, -10, 1.35), ("Bolivia", -64, -17, 1.55),
-    ("Chile", -71, -31, 1.40), ("Argentina", -64, -34, 1.10), ("Uruguai", -56, -33, 1.90),
-    ("Reino Unido", -3, 55, 1.30), ("Franca", 2, 46, 1.25), ("Espanha", -4, 40, 1.40),
-    ("Portugal", -8, 39, 1.80), ("Alemanha", 10, 51, 1.20), ("Italia", 12, 42, 1.45),
-    ("Polonia", 19, 52, 1.55), ("Ucrania", 31, 49, 1.40), ("Noruega", 9, 61, 1.70),
-    ("Suecia", 16, 62, 1.75), ("Grecia", 22, 39, 1.85),
-    ("Marrocos", -6, 32, 1.65), ("Argelia", 2, 28, 1.45), ("Egito", 30, 27, 1.30),
-    ("Nigeria", 8, 9, 1.35), ("Etiopia", 40, 9, 1.60), ("Quenia", 37, 0, 1.65),
-    ("Africa do Sul", 24, -30, 1.20), ("Arabia Saudita", 45, 24, 1.45),
-    ("Israel", 35, 31.5, 2.10), ("Ira", 53, 32, 1.45), ("Turquia", 35, 39, 1.40),
-    ("Russia", 90, 60, 1.00), ("China", 104, 35, 1.00), ("India", 79, 22, 1.00),
-    ("Paquistao", 69, 30, 1.55), ("Japao", 138, 37, 1.25), ("Coreia do Sul", 128, 36, 1.80),
-    ("Indonesia", 118, -3, 1.45), ("Tailandia", 101, 15, 1.70), ("Vietnam", 108, 16, 1.80),
-    ("Filipinas", 122, 12, 1.75), ("Australia", 134, -25, 1.00), ("Nova Zelandia", 173, -41, 1.65),
-]
-
+APP_NAME = "Presidente Simulator V0.6.1"
+WORLD_MAP_URL = ("https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/"
+                 "World_map_geographical.jpg/1280px-World_map_geographical.jpg")
 CONTINENT_LABELS = [
-    ("AMERICA DO NORTE", -107, 48),
-    ("AMERICA DO SUL", -61, -22),
-    ("EUROPA", 16, 54),
-    ("AFRICA", 20, 5),
-    ("ASIA", 92, 44),
-    ("OCEANIA", 137, -29),
+    ("AMÉRICA DO NORTE", -105, 51), ("AMÉRICA DO SUL", -61, -23),
+    ("EUROPA", 16, 55), ("ÁFRICA", 20, 6), ("ÁSIA", 92, 47), ("OCEANIA", 136, -29),
 ]
 
 
-class CountryMarker(Button):
-    def __init__(self, country, threshold, callback=None, **kwargs):
+def _power_for(name):
+    seed = sum((i + 1) * ord(ch) for i, ch in enumerate(name))
+    return 20 + seed % 76
+
+
+def ensure_world_countries(data):
+    countries = data.setdefault("countries", {})
+    for name, _lon, _lat, _threshold in WORLD_COUNTRIES:
+        countries.setdefault(name, {"relation": 0, "power": _power_for(name)})
+    aliases = {"Rússia": "Russia", "Índia": "India", "França": "Franca", "Irã": "Ira"}
+    for canonical, old in aliases.items():
+        if old in countries:
+            countries[canonical] = countries[old]
+
+
+class CountryLabel(Label):
+    def __init__(self, country, threshold, **kwargs):
         super().__init__(**kwargs)
         self.country = country
         self.threshold = threshold
         self.size_hint = (None, None)
-        self.size = (dp(96), dp(24))
-        self.text = country.upper()
-        self.font_size = dp(6.6)
+        self.size = (dp(80), dp(18))
+        self.font_size = dp(5.0)
         self.bold = True
-        self.background_normal = ""
-        self.background_down = ""
-        self.background_color = (0.015, 0.04, 0.065, 0.68)
-        self.color = TEXT
+        self.color = (0.92, 0.96, 1.0, 0.92)
+        self.halign = "center"
+        self.valign = "middle"
+        self.text_size = self.size
         self.opacity = 0
-        self.disabled = True
-        if callback:
-            self.bind(on_release=lambda *_: callback(country))
-        with self.canvas.after:
-            Color(CYAN[0], CYAN[1], CYAN[2], 0.48)
-            self._border = Line(
-                rounded_rectangle=(self.x, self.y, self.width, self.height, dp(6)),
-                width=0.75,
-            )
-        self.bind(pos=self._sync, size=self._sync, state=self._state)
-
-    def _sync(self, *_):
-        self._border.rounded_rectangle = (
-            self.x, self.y, self.width, self.height, dp(6)
-        )
-
-    def _state(self, *_):
-        if self.state == "down":
-            self.background_color = (0.03, 0.26, 0.34, 0.92)
-        else:
-            self.background_color = (0.015, 0.04, 0.065, 0.68)
 
 
 class RealWorldContent(FloatLayout):
@@ -105,74 +61,45 @@ class RealWorldContent(FloatLayout):
         self.on_country = on_country
         self.country_widgets = []
         self.continent_widgets = []
-
-        # Real geographic base map. The old V0.6 fake continent polygons are gone.
-        self.map_image = AsyncImage(
-            source=WORLD_MAP_URL,
-            allow_stretch=True,
-            keep_ratio=False,
-            size_hint=(1, 1),
-            pos_hint={"x": 0, "y": 0},
-        )
+        self.map_image = AsyncImage(source=WORLD_MAP_URL, allow_stretch=True, keep_ratio=False,
+                                    size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
         self.add_widget(self.map_image)
-
-        # Dark strategy-game treatment over the physical map.
-        self.overlay = Widget(size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
-        with self.overlay.canvas:
-            Color(0.0, 0.055, 0.105, 0.32)
-            self._tint = Rectangle(pos=self.overlay.pos, size=self.overlay.size)
-            Color(CYAN[0], CYAN[1], CYAN[2], 0.11)
-        self.overlay.bind(pos=self._sync_overlay, size=self._sync_overlay)
-        self.add_widget(self.overlay)
-
-        self.bind(size=self._layout_labels, pos=self._layout_labels)
+        self.grid = Widget(size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
+        self.grid.bind(pos=self._draw_grid, size=self._draw_grid)
+        self.add_widget(self.grid)
         Clock.schedule_once(self._build_labels, 0)
+        self.bind(pos=self._layout_labels, size=self._layout_labels)
 
-    def _sync_overlay(self, *_):
-        self._draw_grid()
-
-    def _draw_grid(self):
-        # Rebuild overlay canvas so the map has a geopolitical HUD grid.
-        self.overlay.canvas.clear()
-        with self.overlay.canvas:
-            Color(0.0, 0.03, 0.07, 0.28)
-            self._tint = Rectangle(pos=self.overlay.pos, size=self.overlay.size)
-            Color(CYAN[0], CYAN[1], CYAN[2], 0.10)
-            x, y, w, h = self.overlay.x, self.overlay.y, self.overlay.width, self.overlay.height
+    def _draw_grid(self, *_):
+        self.grid.canvas.clear()
+        x, y, w, h = self.grid.x, self.grid.y, self.grid.width, self.grid.height
+        with self.grid.canvas:
+            Color(0.0, 0.035, 0.07, 0.16)
+            Rectangle(pos=(x, y), size=(w, h))
+            Color(CYAN[0], CYAN[1], CYAN[2], 0.08)
             for i in range(1, 12):
                 gx = x + w * i / 12.0
-                Line(points=[gx, y, gx, y + h], width=0.45)
+                Line(points=[gx, y, gx, y + h], width=0.35)
             for i in range(1, 6):
                 gy = y + h * i / 6.0
-                Line(points=[x, gy, x + w, gy], width=0.45)
+                Line(points=[x, gy, x + w, gy], width=0.35)
 
     def project(self, lon, lat):
-        return (
-            self.x + (lon + 180.0) / 360.0 * self.width,
-            self.y + (lat + 90.0) / 180.0 * self.height,
-        )
+        return (self.x + (lon + 180.0) / 360.0 * self.width,
+                self.y + (lat + 90.0) / 180.0 * self.height)
 
     def _build_labels(self, *_):
         for text, lon, lat in CONTINENT_LABELS:
-            lab = label(
-                text,
-                color=(0.79, 0.88, 0.94, 0.72),
-                font_size=dp(8.5),
-                bold=True,
-                halign="center",
-                size_hint=(None, None),
-                size=(dp(150), dp(26)),
-            )
+            lab = label(text, color=(0.80, 0.88, 0.94, 0.46), font_size=dp(6.0), bold=True,
+                        halign="center", size_hint=(None, None), size=(dp(118), dp(20)))
             lab._geo = (lon, lat)
-            self.add_widget(lab)
             self.continent_widgets.append(lab)
-
-        for name, lon, lat, threshold in COUNTRY_POINTS:
-            marker = CountryMarker(name, threshold, callback=self.on_country)
-            marker._geo = (lon, lat)
-            self.add_widget(marker)
-            self.country_widgets.append(marker)
-
+            self.add_widget(lab)
+        for name, lon, lat, threshold in WORLD_COUNTRIES:
+            lab = CountryLabel(name, threshold, text=name.upper())
+            lab._geo = (lon, lat)
+            self.country_widgets.append(lab)
+            self.add_widget(lab)
         self._layout_labels()
         self.set_zoom(1.0)
 
@@ -183,84 +110,63 @@ class RealWorldContent(FloatLayout):
 
     def set_zoom(self, scale):
         for item in self.country_widgets:
-            visible = scale >= item.threshold
-            item.opacity = 1.0 if visible else 0.0
-            item.disabled = not visible
-
+            item.opacity = 0.92 if scale >= item.threshold else 0.0
+            item.font_size = dp(max(3.8, 5.2 / max(1.0, scale ** 0.28)))
         for item in self.continent_widgets:
-            item.opacity = max(0.0, min(0.85, 1.9 - scale))
+            item.opacity = max(0.0, min(0.42, 1.55 - scale * 0.75))
+
+    def select_nearest(self, local_x, local_y, scale):
+        best_name = None
+        best_dist = dp(42) / max(1.0, scale)
+        for name, lon, lat, _threshold in WORLD_COUNTRIES:
+            px, py = self.project(lon, lat)
+            dist = math.hypot(local_x - px, local_y - py)
+            if dist < best_dist:
+                best_dist, best_name = dist, name
+        if best_name and self.on_country:
+            self.on_country(best_name)
+
+
+class CountryScatter(Scatter):
+    def __init__(self, content=None, **kwargs):
+        super().__init__(**kwargs)
+        self.map_content = content
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            touch.ud["presim_map_origin"] = touch.pos
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        origin = touch.ud.get("presim_map_origin")
+        handled = super().on_touch_up(touch)
+        if origin and self.map_content:
+            moved = math.hypot(touch.x - origin[0], touch.y - origin[1])
+            if moved < dp(8):
+                lx, ly = self.to_local(touch.x, touch.y)
+                self.map_content.select_nearest(lx, ly, self.scale)
+        return handled
 
 
 class InteractiveWorldMap(FloatLayout):
     def __init__(self, game, on_country=None, **kwargs):
         super().__init__(**kwargs)
         self.game = game
-        self.on_country = on_country
         self._laid_out = False
-
-        self.scatter = Scatter(
-            do_rotation=False,
-            do_translation=True,
-            do_scale=True,
-            scale_min=1.0,
-            scale_max=5.0,
-            auto_bring_to_front=False,
-            size_hint=(None, None),
-        )
-        self.content = RealWorldContent(
-            game, on_country=on_country, size_hint=(None, None), pos=(0, 0)
-        )
+        self.content = RealWorldContent(game, on_country=on_country, size_hint=(None, None), pos=(0, 0))
+        self.scatter = CountryScatter(content=self.content, do_rotation=False, do_translation=True,
+                                      do_scale=True, translation_touches=1, scale_min=1.0,
+                                      scale_max=6.0, auto_bring_to_front=False,
+                                      size_hint=(None, None))
         self.scatter.add_widget(self.content)
-        self.add_widget(self.scatter)
         self.scatter.bind(scale=self._on_zoom)
-        self.bind(size=self._fit, pos=self._fit)
+        self.add_widget(self.scatter)
+        self.bind(pos=self._fit, size=self._fit)
         Clock.schedule_once(self._fit, 0)
 
-        # Touch-friendly map controls.
-        controls = GlassPanel(
-            orientation="vertical",
-            padding=dp(4),
-            spacing=dp(5),
-            bg=(0.02, 0.055, 0.09, 0.92),
-            size_hint=(None, None),
-            width=dp(54),
-            height=dp(174),
-            pos_hint={"right": 0.985, "center_y": 0.52},
-        )
-        plus = SmallButton(text="+", font_size=dp(18), size_hint_y=None, height=dp(50))
-        minus = SmallButton(text="-", font_size=dp(18), size_hint_y=None, height=dp(50))
-        reset = SmallButton(text="CENTRAR", font_size=dp(5.8), size_hint_y=None, height=dp(50))
-        plus.bind(on_release=lambda *_: self.zoom_by(1.35))
-        minus.bind(on_release=lambda *_: self.zoom_by(1.0 / 1.35))
-        reset.bind(on_release=lambda *_: self.reset_view())
-        controls.add_widget(plus)
-        controls.add_widget(minus)
-        controls.add_widget(reset)
-        self.add_widget(controls)
-
-        hint = GlassPanel(
-            orientation="horizontal",
-            padding=(dp(10), dp(3)),
-            bg=(0.02, 0.045, 0.07, 0.88),
-            size_hint=(0.48, None),
-            height=dp(31),
-            pos_hint={"center_x": 0.55, "y": 0.018},
-        )
-        hint.add_widget(
-            label(
-                "ARRASTE PARA MOVER   |   PINCA COM 2 DEDOS PARA ZOOM",
-                color=MUTED,
-                font_size=dp(6.2),
-                halign="center",
-                bold=True,
-            )
-        )
-        self.add_widget(hint)
-
     def _fit(self, *_):
-        if self.width <= 2 or self.height <= 2:
+        if self.width < 10 or self.height < 10:
             return
-        # Only recenter automatically before the player starts navigating.
         if not self._laid_out:
             self.scatter.size = self.size
             self.content.size = self.size
@@ -271,8 +177,10 @@ class InteractiveWorldMap(FloatLayout):
         self.content.set_zoom(self.scatter.scale)
 
     def zoom_by(self, factor):
-        target = max(1.0, min(5.0, self.scatter.scale * factor))
+        center = self.scatter.center
+        target = max(self.scatter.scale_min, min(self.scatter.scale_max, self.scatter.scale * factor))
         self.scatter.scale = target
+        self.scatter.center = center
         self.content.set_zoom(target)
 
     def reset_view(self):
@@ -283,69 +191,107 @@ class InteractiveWorldMap(FloatLayout):
         self.content.set_zoom(1.0)
 
 
-class V06Root(MediaMapRoot):
+class SelectedCountryPanel(GlassPanel):
+    def __init__(self, root_view, **kwargs):
+        super().__init__(orientation="horizontal", padding=(dp(7), dp(3)), spacing=dp(5),
+                         bg=(0.02, 0.05, 0.08, 0.92), **kwargs)
+        self.root_view = root_view
+        self.name_label = label("BRASIL", color=CYAN, font_size=dp(6.2), bold=True, size_hint_x=0.28)
+        self.info_label = label("TOQUE EM UM PAÍS", color=MUTED, font_size=dp(5.4), size_hint_x=0.50)
+        self.action = SmallButton(text="DIPLOMACIA", font_size=dp(5.3), size_hint_x=0.22)
+        self.action.bind(on_release=lambda *_: self.root_view.open_section("dip"))
+        self.add_widget(self.name_label)
+        self.add_widget(self.info_label)
+        self.add_widget(self.action)
+
+    def set_country(self, name):
+        country = self.root_view.game.state.d.get("countries", {}).get(name, {"relation": 0, "power": 50})
+        self.name_label.text = name.upper()
+        self.info_label.text = f"RELAÇÃO {country.get('relation', 0):+d}   |   PODER {country.get('power', 50)}/100"
+
+
+class V06Root(FloatLayout):
     def __init__(self, game, **kwargs):
-        super().__init__(game, **kwargs)
+        super().__init__(**kwargs)
+        self.game = game
+        self.selected_country = "Brasil"
+        self.globe = InteractiveWorldMap(game, on_country=self._country_selected, size_hint=(1, 1))
+        self.add_widget(self.globe)
+        self.topbar = TopBar(game, size_hint=(0.86, None), height=dp(40), pos_hint={"x": 0.10, "top": 0.988})
+        self.add_widget(self.topbar)
 
-        old_globe = self.globe
-        self.remove_widget(old_globe)
-        self.globe = InteractiveWorldMap(
-            game,
-            on_country=self._country_selected,
-            size_hint=(1, 1),
-        )
-        # Put the map behind top bar, toolbar, drawers and overlays.
-        self.add_widget(self.globe, index=len(self.children))
+        toolbar = GlassPanel(orientation="vertical", padding=dp(3), spacing=dp(3),
+                             bg=(0.02, 0.05, 0.075, 0.90), size_hint=(None, None),
+                             width=dp(42), height=dp(244), pos_hint={"x": 0.010, "center_y": 0.53})
+        for icon, hint, section in [("gov", "POL", "gov"), ("eco", "ECO", "eco"),
+                                    ("def", "MIL", "def"), ("dip", "DIP", "dip"),
+                                    ("news", "MID", "news"), ("save", "SAVE", "save")]:
+            b = IconButton(icon=icon, hint=hint, size_hint_y=None, height=dp(36))
+            if section == "save":
+                b.bind(on_release=lambda *_: self.game.save_game())
+            else:
+                b.bind(on_release=lambda _btn, s=section: self.open_section(s))
+            toolbar.add_widget(b)
+        self.add_widget(toolbar)
 
-        badge = GlassPanel(
-            orientation="horizontal",
-            padding=(dp(9), dp(2)),
-            bg=(0.02, 0.055, 0.09, 0.90),
-            size_hint=(None, None),
-            width=dp(176),
-            height=dp(30),
-            pos_hint={"x": 0.073, "top": 0.90},
-        )
-        badge.add_widget(
-            label(
-                "MAPA ESTRATEGICO 2D  |  V0.6",
-                color=CYAN,
-                font_size=dp(6.5),
-                bold=True,
-            )
-        )
-        self.add_widget(badge)
+        zoom = GlassPanel(orientation="vertical", padding=dp(3), spacing=dp(3),
+                          bg=(0.02, 0.05, 0.075, 0.90), size_hint=(None, None),
+                          width=dp(40), height=dp(126), pos_hint={"right": 0.987, "center_y": 0.52})
+        for txt, cb in [("+", lambda *_: self.globe.zoom_by(1.35)),
+                        ("−", lambda *_: self.globe.zoom_by(1 / 1.35)),
+                        ("⌂", lambda *_: self.globe.reset_view())]:
+            b = SmallButton(text=txt, font_size=dp(12), size_hint_y=None, height=dp(37))
+            b.bind(on_release=cb)
+            zoom.add_widget(b)
+        self.add_widget(zoom)
 
-        # Functional bottom navigation inspired by grand-strategy interfaces.
-        nav = GlassPanel(
-            orientation="horizontal",
-            spacing=dp(4),
-            padding=dp(4),
-            bg=(0.02, 0.045, 0.075, 0.94),
-            size_hint=(0.60, None),
-            height=dp(43),
-            pos_hint={"center_x": 0.50, "y": 0.012},
-        )
-        for title, section in (
-            ("ECONOMIA", "eco"),
-            ("POLITICA", "gov"),
-            ("DIPLOMACIA", "dip"),
-            ("FORCAS ARMADAS", "def"),
-            ("GABINETE", "gov"),
-        ):
-            btn = SmallButton(text=title, font_size=dp(6.2))
-            btn.bind(on_release=lambda _btn, sec=section: self._open_section(sec))
-            nav.add_widget(btn)
-        self.add_widget(nav)
+        bottom = GlassPanel(orientation="horizontal", padding=dp(3), spacing=dp(3),
+                            bg=(0.02, 0.045, 0.07, 0.92), size_hint=(0.62, None),
+                            height=dp(36), pos_hint={"center_x": 0.50, "y": 0.010})
+        for title, section in [("GABINETE", "gov"), ("ECONOMIA", "eco"), ("POLÍTICA", "gov"),
+                               ("MILITAR", "def"), ("DIPLOMACIA", "dip"), ("MÍDIA", "news")]:
+            b = SmallButton(text=title, font_size=dp(5.4))
+            b.bind(on_release=lambda _btn, s=section: self.open_section(s))
+            bottom.add_widget(b)
+        self.add_widget(bottom)
 
-        # Move the live geopolitical status to the lower-right to avoid collisions.
-        self.status.size_hint = (0.29, None)
-        self.status.height = dp(34)
-        self.status.pos_hint = {"right": 0.985, "y": 0.012}
+        self.country_panel = SelectedCountryPanel(self, size_hint=(0.31, None), height=dp(32),
+                                                   pos_hint={"x": 0.058, "y": 0.010})
+        self.add_widget(self.country_panel)
+        self.status = GlassPanel(orientation="horizontal", padding=(dp(7), dp(2)),
+                                 bg=(0.02, 0.04, 0.06, 0.80), size_hint=(0.28, None),
+                                 height=dp(28), pos_hint={"right": 0.985, "y": 0.010})
+        self.status_label = label("", color=MUTED, font_size=dp(5.5))
+        self.status.add_widget(self.status_label)
+        self.add_widget(self.status)
 
-    def _open_section(self, section):
+        self.drawer = MediaDrawer(game, size_hint=(1, 1))
+        game.drawer = self.drawer
+        self.add_widget(self.drawer)
+        self.news_overlay = MediaNewsOverlay(game, size_hint=(1, 1))
+        game.news_overlay = self.news_overlay
+        self.add_widget(self.news_overlay)
+        self.country_panel.set_country("Brasil")
+
+    def open_section(self, section):
         if self.game.drawer:
             self.game.drawer.open(section)
+
+    def _country_selected(self, name):
+        self.selected_country = name
+        self.country_panel.set_country(name)
+        country = self.game.state.d.get("countries", {}).get(name)
+        if country:
+            self.status_label.text = f"{name.upper()}  |  REL {country['relation']:+d}  |  PODER {country['power']}/100"
+
+    def refresh(self):
+        self.topbar.refresh()
+        if self.selected_country:
+            country = self.game.state.d.get("countries", {}).get(self.selected_country)
+            if country:
+                self.country_panel.set_country(self.selected_country)
+        if self.drawer and not self.drawer.disabled:
+            self.drawer.rebuild()
 
 
 class GameApp(V05GameApp):
@@ -354,17 +300,16 @@ class GameApp(V05GameApp):
     def build(self):
         Window.clearcolor = BG
         from v03_app import GameState
-        from v05_app import ensure_media_state
-
         self.state = GameState()
         self.state.load()
         ensure_media_state(self.state.d)
+        ensure_world_countries(self.state.d)
+        self.state.save()
         self.playing = False
         self.overlay_open = False
         self.drawer = None
         self.news_overlay = None
         self._play_accumulator = 0.0
-
         self.root_view = V06Root(self)
         Clock.schedule_interval(self._tick, 0.25)
         Clock.schedule_interval(lambda _dt: self.root_view.refresh(), 0.8)
