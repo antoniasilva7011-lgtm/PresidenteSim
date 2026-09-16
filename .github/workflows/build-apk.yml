@@ -75,6 +75,41 @@ jobs:
           git clone --depth 1 --branch v2026.05.09 \
             https://github.com/kivy/python-for-android.git .p4a
 
+      - name: Fix target platform for p4a dependency installation
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          # Keep p4a's Android wheel target when installing resolved dependencies.
+          path = Path(".p4a/pythonforandroid/build.py")
+          source = path.read_text(encoding="utf-8")
+          old = r'''            shprint(sh.bash, '-c', (
+                          "venv/bin/pip " +
+                          "install -v --target '{0}' --no-deps -r requirements.txt"
+                      ).format(ctx.get_site_packages_dir(arch).replace("'", "'\"'\"'")),
+                              _env=copy.copy(env))'''
+          new = r'''            platform_args = [
+                          f"--platform={tag}"
+                          for tag in PyProjectRecipe.get_wheel_platform_tags(arch.arch, ctx)
+                      ]
+                      shprint(
+                          sh.Command(join(ctx.build_dir, "venv", "bin", "pip")),
+                          "install", "-v",
+                          "--target", ctx.get_site_packages_dir(arch),
+                          "--no-deps", "--only-binary=:all:",
+                          "--python-version", ctx.python_recipe.version,
+                          *platform_args, "-r", "requirements.txt",
+                          _env=copy.copy(env),
+                      )'''
+          if source.count(old) != 1:
+              raise SystemExit("Expected exactly one legacy p4a pip install call")
+          patched = source.replace(old, new, 1)
+          ast.parse(patched, filename=str(path))
+          path.write_text(patched, encoding="utf-8")
+          print("Patched p4a pip install to use the target Android platform and Python version")
+          PY
+
       - name: Validate pinned Android toolchain
         run: |
           python - <<'PY'
