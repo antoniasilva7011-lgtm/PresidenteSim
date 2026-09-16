@@ -25,7 +25,7 @@ version = 0.1.0
 requirements = python3,kivy
 
 # Android options.
-android.minapi = 23
+android.minapi = 24
 android.api = 33
 android.ndk = 25b
 android.archs = arm64-v8a
