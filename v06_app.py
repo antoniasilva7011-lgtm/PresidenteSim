@@ -4,42 +4,41 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.graphics import Color, Line, Mesh, Rectangle
 from kivy.metrics import dp
+from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.image import AsyncImage
 from kivy.uix.label import Label
-from kivy.uix.scatter import Scatter
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from countries_data import WORLD_COUNTRIES
-from v04_app import TopBar, IconButton, GlassPanel, SmallButton, label
-from v05_app import BG, CYAN, MUTED, MediaDrawer, MediaNewsOverlay, GameApp as V05GameApp, ensure_media_state
+from v03_app import fmt_money
+from v04_app import (
+    AMBER,
+    CYAN,
+    GREEN,
+    MUTED,
+    RED,
+    TEXT,
+    TopBar,
+    IconButton,
+    GlassPanel,
+    SmallButton,
+    label,
+)
+from v05_app import (
+    BG,
+    MediaNewsOverlay,
+    GameApp as V05GameApp,
+    ensure_media_state,
+)
 
-APP_NAME = "Presidente Simulator V0.6.2"
+APP_NAME = "Presidente Simulator V0.6.3"
 WORLD_MAP_URL = (
     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/"
     "World_map_geographical.jpg/1280px-World_map_geographical.jpg"
 )
-
-CONTINENT_LABELS = [
-    ("AMÉRICA DO NORTE", -105, 51),
-    ("AMÉRICA DO SUL", -61, -23),
-    ("EUROPA", 16, 55),
-    ("ÁFRICA", 20, 6),
-    ("ÁSIA", 92, 47),
-    ("OCEANIA", 136, -29),
-]
-
-# Fallback silhouettes in lon/lat coordinates. The real map image is drawn over them
-# when available, but these keep the map usable even without a network image.
-FALLBACK_LAND = [
-    [(-168, 71), (-145, 60), (-130, 51), (-124, 32), (-110, 23), (-97, 17), (-85, 9), (-77, 20), (-66, 45), (-55, 55), (-80, 70), (-120, 74)],
-    [(-81, 12), (-69, 8), (-50, 2), (-35, -8), (-44, -24), (-55, -36), (-67, -55), (-76, -42), (-80, -15)],
-    [(-11, 36), (3, 44), (25, 48), (40, 56), (57, 61), (80, 70), (115, 72), (145, 60), (170, 52), (150, 40), (120, 30), (105, 18), (82, 8), (65, 23), (48, 30), (35, 34), (20, 31), (10, 36)],
-    [(-17, 35), (5, 36), (25, 31), (42, 14), (51, 5), (44, -20), (32, -35), (17, -35), (4, -28), (-8, -5)],
-    [(112, -10), (153, -11), (151, -31), (136, -43), (116, -35), (110, -22)],
-    [(166, -34), (179, -37), (178, -47), (166, -46)],
-    [(-53, 60), (-42, 76), (-18, 82), (-22, 62)],
-]
 
 
 def _power_for(name):
@@ -51,7 +50,14 @@ def ensure_world_countries(data):
     countries = data.setdefault("countries", {})
     for name, _lon, _lat, _threshold in WORLD_COUNTRIES:
         countries.setdefault(name, {"relation": 0, "power": _power_for(name)})
-    aliases = {"Rússia": "Russia", "Índia": "India", "França": "Franca", "Irã": "Ira"}
+    aliases = {
+        "Rússia": "Russia",
+        "Índia": "India",
+        "França": "Franca",
+        "Irã": "Ira",
+        "Canadá": "Canada",
+        "México": "Mexico",
+    }
     for canonical, old in aliases.items():
         if old in countries:
             countries[canonical] = countries[old]
@@ -61,287 +67,411 @@ class CountryLabel(Label):
     def __init__(self, country, threshold, **kwargs):
         super().__init__(**kwargs)
         self.country = country
-        self.threshold = threshold
+        self.threshold = float(threshold)
         self.size_hint = (None, None)
-        self.size = (dp(64), dp(14))
-        self.font_size = dp(4.7)
+        self.size = (dp(76), dp(13))
+        self.font_size = dp(4.1)
         self.bold = True
-        self.color = (0.92, 0.96, 1.0, 0.90)
+        self.color = (0.96, 0.98, 1.0, 0.86)
         self.halign = "center"
         self.valign = "middle"
         self.text_size = self.size
-        self.opacity = 0
+        self.bind(size=lambda inst, _v: setattr(inst, "text_size", inst.size))
 
 
-class WorldFallback(Widget):
+class FallbackWorld(Widget):
+    """Always-visible vector fallback so the map never becomes an empty black screen."""
+
+    POLYS = [
+        [(-0.92, 0.34), (-0.74, 0.66), (-0.46, 0.60), (-0.36, 0.38), (-0.49, 0.13), (-0.72, 0.10)],
+        [(-0.48, 0.06), (-0.34, -0.05), (-0.28, -0.40), (-0.39, -0.77), (-0.52, -0.48)],
+        [(-0.12, 0.52), (0.10, 0.68), (0.46, 0.62), (0.78, 0.40), (0.67, 0.12), (0.38, 0.00), (0.05, 0.17)],
+        [(0.01, 0.11), (0.25, 0.02), (0.28, -0.34), (0.12, -0.62), (-0.06, -0.35)],
+        [(0.56, -0.34), (0.77, -0.27), (0.87, -0.48), (0.68, -0.60)],
+    ]
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.bind(pos=self.redraw, size=self.redraw)
         Clock.schedule_once(self.redraw, 0)
 
-    def project(self, lon, lat):
-        return (
-            self.x + (lon + 180.0) / 360.0 * self.width,
-            self.y + (lat + 90.0) / 180.0 * self.height,
-        )
-
     def redraw(self, *_):
         self.canvas.clear()
         x, y, w, h = self.x, self.y, self.width, self.height
-        if w < 2 or h < 2:
-            return
         with self.canvas:
-            Color(0.015, 0.075, 0.11, 1)
+            Color(0.015, 0.08, 0.12, 1)
             Rectangle(pos=(x, y), size=(w, h))
-            Color(0.055, 0.16, 0.19, 1)
-            for poly in FALLBACK_LAND:
+            Color(0.04, 0.20, 0.24, 0.85)
+            for poly in self.POLYS:
                 verts = []
-                for lon, lat in poly:
-                    px, py = self.project(lon, lat)
-                    verts.extend([px, py, 0, 0])
+                for px, py in poly:
+                    verts.extend([x + (px + 1) * 0.5 * w, y + (py + 1) * 0.5 * h, 0, 0])
                 Mesh(vertices=verts, indices=list(range(len(poly))), mode="triangle_fan")
-            Color(0.14, 0.58, 0.72, 0.18)
-            for poly in FALLBACK_LAND:
-                pts = []
-                for lon, lat in poly:
-                    pts.extend(self.project(lon, lat))
-                if len(pts) >= 4:
-                    pts.extend(pts[:2])
-                    Line(points=pts, width=0.55)
+            Color(CYAN[0], CYAN[1], CYAN[2], 0.08)
+            for i in range(1, 12):
+                gx = x + w * i / 12.0
+                Line(points=[gx, y, gx, y + h], width=0.35)
+            for i in range(1, 6):
+                gy = y + h * i / 6.0
+                Line(points=[x, gy, x + w, gy], width=0.35)
 
 
-class RealWorldContent(FloatLayout):
+class GestureWorldMap(FloatLayout):
+    """Map with native one-finger pan, two-finger pinch zoom and country selection."""
+
     def __init__(self, game, on_country=None, **kwargs):
         super().__init__(**kwargs)
         self.game = game
         self.on_country = on_country
-        self.country_widgets = []
-        self.continent_widgets = []
+        self.zoom = 1.0
+        self.pan_x = 0.0
+        self.pan_y = 0.0
+        self.min_zoom = 1.0
+        self.max_zoom = 6.0
+        self._touches = {}
+        self._gesture_multitouch = False
+        self._pinch_dist = None
+        self._pinch_zoom = 1.0
+        self._pinch_world = (0.5, 0.5)
 
-        self.fallback = WorldFallback(size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
+        self.fallback = FallbackWorld(size_hint=(None, None))
         self.add_widget(self.fallback)
 
         self.map_image = AsyncImage(
             source=WORLD_MAP_URL,
             allow_stretch=True,
             keep_ratio=False,
-            size_hint=(1, 1),
-            pos_hint={"x": 0, "y": 0},
+            size_hint=(None, None),
         )
         self.add_widget(self.map_image)
 
-        self.grid = Widget(size_hint=(1, 1), pos_hint={"x": 0, "y": 0})
-        self.grid.bind(pos=self._draw_grid, size=self._draw_grid)
-        self.add_widget(self.grid)
-
-        Clock.schedule_once(self._build_labels, 0.05)
-        self.bind(pos=self._layout_labels, size=self._layout_labels)
-
-    def _draw_grid(self, *_):
-        self.grid.canvas.clear()
-        x, y, w, h = self.grid.x, self.grid.y, self.grid.width, self.grid.height
-        with self.grid.canvas:
-            Color(0.0, 0.025, 0.055, 0.12)
-            Rectangle(pos=(x, y), size=(w, h))
-            Color(CYAN[0], CYAN[1], CYAN[2], 0.075)
-            for i in range(1, 12):
-                gx = x + w * i / 12.0
-                Line(points=[gx, y, gx, y + h], width=0.32)
-            for i in range(1, 6):
-                gy = y + h * i / 6.0
-                Line(points=[x, gy, x + w, gy], width=0.32)
-
-    def project(self, lon, lat):
-        return (
-            self.x + (lon + 180.0) / 360.0 * self.width,
-            self.y + (lat + 90.0) / 180.0 * self.height,
-        )
-
-    def _build_labels(self, *_):
-        if self.width < 200 or self.height < 100:
-            Clock.schedule_once(self._build_labels, 0.08)
-            return
-        if self.country_widgets:
-            return
-
-        for text, lon, lat in CONTINENT_LABELS:
-            lab = label(
-                text,
-                color=(0.80, 0.88, 0.94, 0.42),
-                font_size=dp(5.6),
-                bold=True,
-                halign="center",
-                size_hint=(None, None),
-                size=(dp(105), dp(18)),
-            )
-            lab._geo = (lon, lat)
-            self.continent_widgets.append(lab)
-            self.add_widget(lab)
-
+        self.labels = []
         for name, lon, lat, threshold in WORLD_COUNTRIES:
             lab = CountryLabel(name, threshold, text=name.upper())
-            lab._geo = (lon, lat)
-            self.country_widgets.append(lab)
+            lab._geo = (float(lon), float(lat))
+            self.labels.append(lab)
             self.add_widget(lab)
 
-        self._layout_labels()
-        self.set_zoom(1.0)
+        self.bind(pos=self._layout_map, size=self._layout_map)
+        Clock.schedule_once(self._layout_map, 0)
 
-    def _layout_labels(self, *_):
-        if self.width < 10 or self.height < 10:
+    def _map_rect(self):
+        draw_w = max(1.0, self.width * self.zoom)
+        draw_h = max(1.0, self.height * self.zoom)
+        x = self.center_x - draw_w * 0.5 + self.pan_x
+        y = self.center_y - draw_h * 0.5 + self.pan_y
+        return x, y, draw_w, draw_h
+
+    def _clamp_pan(self):
+        max_x = max(0.0, (self.width * self.zoom - self.width) * 0.5)
+        max_y = max(0.0, (self.height * self.zoom - self.height) * 0.5)
+        self.pan_x = max(-max_x, min(max_x, self.pan_x))
+        self.pan_y = max(-max_y, min(max_y, self.pan_y))
+
+    def _layout_map(self, *_):
+        if self.width <= 2 or self.height <= 2:
             return
-        for item in self.continent_widgets + self.country_widgets:
-            lon, lat = item._geo
-            item.center = self.project(lon, lat)
+        self._clamp_pan()
+        x, y, w, h = self._map_rect()
+        self.fallback.pos = (x, y)
+        self.fallback.size = (w, h)
+        self.map_image.pos = (x, y)
+        self.map_image.size = (w, h)
 
-    def set_zoom(self, scale):
-        for item in self.country_widgets:
-            item.opacity = 0.90 if scale >= item.threshold else 0.0
-            item.font_size = dp(max(3.6, 4.9 / max(1.0, scale ** 0.22)))
-        for item in self.continent_widgets:
-            item.opacity = max(0.0, min(0.40, 1.45 - scale * 0.72))
+        font = dp(4.0 if self.zoom < 1.5 else 4.8 if self.zoom < 2.7 else 5.4)
+        for lab in self.labels:
+            lon, lat = lab._geo
+            px = x + (lon + 180.0) / 360.0 * w
+            py = y + (lat + 90.0) / 180.0 * h
+            lab.center = (px, py)
+            lab.font_size = font
+            if self.zoom >= lab.threshold:
+                lab.opacity = 0.96
+            elif lab.threshold >= 2.5:
+                lab.opacity = 0.30
+            elif lab.threshold >= 1.8:
+                lab.opacity = 0.48
+            else:
+                lab.opacity = 0.72
 
-    def select_nearest(self, local_x, local_y, scale):
+    def _screen_to_world(self, sx, sy):
+        x, y, w, h = self._map_rect()
+        return ((sx - x) / max(1.0, w), (sy - y) / max(1.0, h))
+
+    def _set_zoom_at(self, target, sx, sy, world=None):
+        target = max(self.min_zoom, min(self.max_zoom, float(target)))
+        if world is None:
+            world = self._screen_to_world(sx, sy)
+        u, v = world
+        self.zoom = target
+        draw_w = self.width * self.zoom
+        draw_h = self.height * self.zoom
+        base_x = self.center_x - draw_w * 0.5
+        base_y = self.center_y - draw_h * 0.5
+        self.pan_x = sx - u * draw_w - base_x
+        self.pan_y = sy - v * draw_h - base_y
+        self._layout_map()
+
+    def zoom_by(self, factor):
+        self._set_zoom_at(self.zoom * factor, self.center_x, self.center_y)
+
+    def reset_view(self):
+        self.zoom = 1.0
+        self.pan_x = 0.0
+        self.pan_y = 0.0
+        self._layout_map()
+
+    def _select_nearest(self, sx, sy):
+        x, y, w, h = self._map_rect()
         best_name = None
-        best_dist = dp(38) / max(1.0, scale)
+        best_dist = dp(34)
         for name, lon, lat, _threshold in WORLD_COUNTRIES:
-            px, py = self.project(lon, lat)
-            dist = math.hypot(local_x - px, local_y - py)
+            px = x + (float(lon) + 180.0) / 360.0 * w
+            py = y + (float(lat) + 90.0) / 180.0 * h
+            dist = math.hypot(sx - px, sy - py)
             if dist < best_dist:
                 best_dist, best_name = dist, name
         if best_name and self.on_country:
             self.on_country(best_name)
 
-
-class CountryScatter(Scatter):
-    def __init__(self, content=None, **kwargs):
-        super().__init__(**kwargs)
-        self.map_content = content
+    def _start_pinch(self):
+        if len(self._touches) < 2:
+            self._pinch_dist = None
+            return
+        touches = list(self._touches.values())[:2]
+        a, b = touches
+        midx = (a.x + b.x) * 0.5
+        midy = (a.y + b.y) * 0.5
+        self._pinch_dist = max(dp(1), math.hypot(a.x - b.x, a.y - b.y))
+        self._pinch_zoom = self.zoom
+        self._pinch_world = self._screen_to_world(midx, midy)
+        self._gesture_multitouch = True
 
     def on_touch_down(self, touch):
-        if self.collide_point(*touch.pos):
-            touch.ud["presim_map_origin"] = touch.pos
-        return super().on_touch_down(touch)
+        if not self.collide_point(*touch.pos):
+            return super().on_touch_down(touch)
+        self._touches[touch.uid] = touch
+        touch.ud["presim_start"] = touch.pos
+        touch.ud["presim_last"] = touch.pos
+        touch.ud["presim_moved"] = False
+        touch.grab(self)
+        if len(self._touches) >= 2:
+            self._start_pinch()
+        return True
+
+    def on_touch_move(self, touch):
+        if touch.grab_current is not self or touch.uid not in self._touches:
+            return super().on_touch_move(touch)
+
+        if len(self._touches) >= 2:
+            touches = list(self._touches.values())[:2]
+            a, b = touches
+            current_dist = max(dp(1), math.hypot(a.x - b.x, a.y - b.y))
+            if self._pinch_dist is None:
+                self._start_pinch()
+            ratio = current_dist / max(dp(1), self._pinch_dist)
+            midx = (a.x + b.x) * 0.5
+            midy = (a.y + b.y) * 0.5
+            self._set_zoom_at(self._pinch_zoom * ratio, midx, midy, self._pinch_world)
+            for t in touches:
+                t.ud["presim_moved"] = True
+            return True
+
+        last_x, last_y = touch.ud.get("presim_last", touch.pos)
+        dx, dy = touch.x - last_x, touch.y - last_y
+        if abs(dx) + abs(dy) > dp(1):
+            touch.ud["presim_moved"] = True
+            self.pan_x += dx
+            self.pan_y += dy
+            self._layout_map()
+        touch.ud["presim_last"] = touch.pos
+        return True
 
     def on_touch_up(self, touch):
-        origin = touch.ud.get("presim_map_origin")
-        handled = super().on_touch_up(touch)
-        if origin and self.map_content:
-            moved = math.hypot(touch.x - origin[0], touch.y - origin[1])
-            if moved < dp(8):
-                lx, ly = self.to_local(touch.x, touch.y)
-                self.map_content.select_nearest(lx, ly, self.scale)
-        return handled
+        if touch.grab_current is not self and touch.uid not in self._touches:
+            return super().on_touch_up(touch)
+
+        moved = touch.ud.get("presim_moved", False)
+        was_multi = self._gesture_multitouch
+        self._touches.pop(touch.uid, None)
+        if touch.grab_current is self:
+            touch.ungrab(self)
+
+        if len(self._touches) >= 2:
+            self._start_pinch()
+        elif len(self._touches) == 1:
+            rem = next(iter(self._touches.values()))
+            rem.ud["presim_last"] = rem.pos
+            self._pinch_dist = None
+        else:
+            self._pinch_dist = None
+            self._gesture_multitouch = False
+
+        if not moved and not was_multi:
+            self._select_nearest(touch.x, touch.y)
+        return True
 
 
-class InteractiveWorldMap(FloatLayout):
-    def __init__(self, game, on_country=None, **kwargs):
-        super().__init__(**kwargs)
-        self.game = game
-        self.content = RealWorldContent(
-            game,
-            on_country=on_country,
-            size_hint=(None, None),
-            pos=(0, 0),
-        )
-        self.scatter = CountryScatter(
-            content=self.content,
-            do_rotation=False,
-            do_translation=True,
-            do_scale=True,
-            translation_touches=1,
-            scale_min=1.0,
-            scale_max=6.0,
-            auto_bring_to_front=False,
-            size_hint=(None, None),
-        )
-        self.scatter.add_widget(self.content)
-        self.scatter.bind(scale=self._on_zoom)
-        self.add_widget(self.scatter)
-        self.bind(pos=self._fit, size=self._fit)
-        Clock.schedule_once(self._fit, 0)
-        Clock.schedule_once(self._fit, 0.15)
+class GameSectionPanel(GlassPanel):
+    TITLES = {
+        "cabinet": "GABINETE PRESIDENCIAL",
+        "gov": "POLÍTICA / GOVERNO",
+        "eco": "ECONOMIA",
+        "def": "FORÇAS ARMADAS",
+        "dip": "DIPLOMACIA",
+        "news": "MÍDIA / IMPRENSA",
+    }
 
-    def _fit(self, *_):
-        if self.width < 200 or self.height < 100:
-            return
+    def __init__(self, root_view, **kwargs):
+        super().__init__(orientation="vertical", padding=dp(8), spacing=dp(5), bg=(0.018, 0.04, 0.065, 0.98), **kwargs)
+        self.root_view = root_view
+        self.game = root_view.game
+        self.section = None
+        self.opacity = 0
+        self.disabled = True
 
-        # Critical V0.6.2 fix: always synchronize map geometry with the real viewport.
-        # The old code captured Kivy's initial 100x100 default and never resized again.
-        at_base_zoom = self.scatter.scale <= 1.01
-        self.scatter.size = self.size
-        self.content.size = self.size
-        self.content.pos = (0, 0)
-        if at_base_zoom:
-            self.scatter.pos = self.pos
-        self.content._layout_labels()
+    def close(self):
+        self.opacity = 0
+        self.disabled = True
+        self.section = None
 
-    def _on_zoom(self, *_):
-        self.content.set_zoom(self.scatter.scale)
+    def open(self, section):
+        self.section = section
+        self.opacity = 1
+        self.disabled = False
+        self.rebuild()
 
-    def zoom_by(self, factor):
-        viewport_center = self.center
-        target = max(
-            self.scatter.scale_min,
-            min(self.scatter.scale_max, self.scatter.scale * factor),
-        )
-        self.scatter.scale = target
-        self.scatter.center = viewport_center
-        self.content.set_zoom(target)
+    def _header(self, title):
+        row = BoxLayout(size_hint_y=None, height=dp(32), spacing=dp(4))
+        row.add_widget(label(title, color=CYAN, font_size=dp(8.0), bold=True))
+        close = SmallButton(text="X", size_hint_x=None, width=dp(32), font_size=dp(7))
+        close.bind(on_release=lambda *_: self.close())
+        row.add_widget(close)
+        self.add_widget(row)
 
-    def reset_view(self):
-        self.scatter.scale = 1.0
-        self.scatter.size = self.size
-        self.content.size = self.size
-        self.content.pos = (0, 0)
-        self.scatter.pos = self.pos
-        self.content.set_zoom(1.0)
-        self.content._layout_labels()
+    def _stat(self, title, value, color=TEXT):
+        row = GlassPanel(orientation="horizontal", padding=(dp(7), dp(2)), size_hint_y=None, height=dp(29), bg=(0.055, 0.085, 0.12, 0.90))
+        row.add_widget(label(title, color=MUTED, font_size=dp(5.8)))
+        row.add_widget(label(value, color=color, font_size=dp(7.0), bold=True, halign="right"))
+        self.add_widget(row)
+
+    def _button(self, text, callback):
+        b = SmallButton(text=text, size_hint_y=None, height=dp(31), font_size=dp(5.8))
+        b.bind(on_release=callback)
+        self.add_widget(b)
+        return b
+
+    def rebuild(self):
+        self.clear_widgets()
+        d = self.game.state.d
+        sec = self.section
+        self._header(self.TITLES.get(sec, "PAINEL"))
+
+        if sec == "cabinet":
+            self._stat("Aprovação", f"{d['approval']:.0f}%", GREEN if d["approval"] >= 50 else RED)
+            self._stat("Congresso", f"{d['congress']:.0f}%")
+            self._stat("Estabilidade", f"{d['stability']:.0f}%")
+            self._button("COLETIVA DE IMPRENSA", lambda *_: self.game.show_press_overlay())
+            self._button("ABRIR TELEJORNAL", lambda *_: self.game.show_newsroom())
+            self._button("SALVAR PARTIDA", lambda *_: self.game.save_game())
+            self._button("AVANÇAR 1 DIA", lambda *_: self.game.advance(1))
+
+        elif sec == "gov":
+            self._stat("Aprovação", f"{d['approval']:.0f}%", GREEN if d["approval"] >= 50 else RED)
+            self._stat("Congresso", f"{d['congress']:.0f}%")
+            self._stat("Estabilidade", f"{d['stability']:.0f}%")
+            self._stat("Risco de impeachment", f"{d['impeachment_risk']:.0f}%", AMBER)
+            self._button("COLETIVA DE IMPRENSA", lambda *_: self.game.show_press_overlay())
+            self._button("SALVAR PARTIDA", lambda *_: self.game.save_game())
+
+        elif sec == "eco":
+            self._stat("PIB", fmt_money(d["gdp"]), CYAN)
+            self._stat("Inflação", f"{d['inflation']:.1f}%")
+            self._stat("Desemprego", f"{d['unemployment']:.1f}%")
+            self._stat("Dívida / PIB", f"{d['debt_ratio']:.1f}%")
+            grid = GridLayout(cols=2, spacing=dp(4), size_hint_y=None, height=dp(68))
+            for text, key, amount in [("IMPOSTO -1", "tax_rate", -1), ("IMPOSTO +1", "tax_rate", 1), ("JUROS -0,5", "interest_rate", -0.5), ("GASTO SOCIAL +1", "social_spending", 1)]:
+                b = SmallButton(text=text, font_size=dp(5.1))
+                b.bind(on_release=lambda _btn, k=key, a=amount, t=text: self._economic(k, a, t))
+                grid.add_widget(b)
+            self.add_widget(grid)
+
+        elif sec == "def":
+            self._stat("Orçamento militar", f"{d['military_budget']:.1f}% do PIB")
+            self._stat("Estabilidade", f"{d['stability']:.0f}%")
+            self._stat("Risco de golpe", f"{d['coup_risk']:.0f}%", AMBER)
+            self._button("AUMENTAR ORÇAMENTO", lambda *_: self._military("Aumentar orçamento militar", 0.2))
+            self._button("REDUZIR ORÇAMENTO", lambda *_: self._military("Reduzir orçamento militar", -0.2))
+            self._button("REALIZAR EXERCÍCIO", lambda *_: self._military("Realizar exercício militar", 1.0))
+
+        elif sec == "dip":
+            selected = self.root_view.selected_country or "Brasil"
+            c = d["countries"].get(selected, {"relation": 0, "power": 50})
+            self._stat("País selecionado", selected.upper(), CYAN)
+            self._stat("Relação", f"{c.get('relation', 0):+d}")
+            self._stat("Poder", f"{c.get('power', 50)}/100")
+            if selected != "Brasil":
+                self._button("NEGOCIAR COM PAÍS", lambda *_: self._negotiate(selected))
+            self.add_widget(label("TODOS OS PAÍSES / TERRITÓRIOS", color=CYAN, font_size=dp(5.6), bold=True, size_hint_y=None, height=dp(20)))
+            scroll = ScrollView(do_scroll_x=False, bar_width=dp(3))
+            body = GridLayout(cols=1, spacing=dp(2), size_hint_y=None)
+            body.bind(minimum_height=body.setter("height"))
+            for name, _lon, _lat, _thr in sorted(WORLD_COUNTRIES, key=lambda item: item[0]):
+                row = SmallButton(text=name.upper(), size_hint_y=None, height=dp(25), font_size=dp(4.8), halign="left")
+                row.bind(on_release=lambda _btn, n=name: self._select_country(n))
+                body.add_widget(row)
+            scroll.add_widget(body)
+            self.add_widget(scroll)
+
+        elif sec == "news":
+            self._stat("Mercado", f"{d['market_sentiment']:.0f}%")
+            self._stat("Risco de crise", f"{d['crisis_risk']:.0f}%", AMBER)
+            hero = GlassPanel(orientation="vertical", padding=dp(6), spacing=dp(2), size_hint_y=None, height=dp(92), bg=(0.055, 0.085, 0.12, 0.92))
+            hero.add_widget(label("ÚLTIMA HORA", color=RED, font_size=dp(6.0), bold=True))
+            hero.add_widget(label(d["headline"], font_size=dp(6.8), bold=True))
+            hero.add_widget(label(d["last_news"], color=MUTED, font_size=dp(5.4)))
+            self.add_widget(hero)
+            self._button("ABRIR TELEJORNAL", lambda *_: self.game.show_newsroom())
+            self._button("CONVOCAR COLETIVA", lambda *_: self.game.show_press_overlay())
+
+        self.add_widget(Widget())
+
+    def _economic(self, key, amount, title):
+        self.game.economic_action(key, amount, title)
+        self.rebuild()
+        self.root_view.refresh()
+
+    def _military(self, title, amount):
+        self.game.military_action(title, amount)
+        self.rebuild()
+        self.root_view.refresh()
+
+    def _negotiate(self, name):
+        self.game.negotiate(name)
+        self.rebuild()
+        self.root_view.refresh()
+
+    def _select_country(self, name):
+        self.root_view.select_country(name)
+        self.rebuild()
 
 
 class SelectedCountryPanel(GlassPanel):
     def __init__(self, root_view, **kwargs):
-        super().__init__(
-            orientation="horizontal",
-            padding=(dp(7), dp(2)),
-            spacing=dp(4),
-            bg=(0.02, 0.05, 0.08, 0.92),
-            **kwargs,
-        )
+        super().__init__(orientation="horizontal", padding=(dp(7), dp(3)), spacing=dp(5), bg=(0.02, 0.05, 0.08, 0.95), **kwargs)
         self.root_view = root_view
-        self.name_label = label(
-            "BRASIL",
-            color=CYAN,
-            font_size=dp(5.8),
-            bold=True,
-            size_hint_x=0.27,
-        )
-        self.info_label = label(
-            "TOQUE EM UM PAÍS",
-            color=MUTED,
-            font_size=dp(5.0),
-            size_hint_x=0.51,
-        )
-        self.action = SmallButton(
-            text="DIPLOMACIA",
-            font_size=dp(4.8),
-            size_hint_x=0.22,
-        )
+        self.name_label = label("BRASIL", color=CYAN, font_size=dp(5.8), bold=True, size_hint_x=0.27)
+        self.info_label = label("RELAÇÃO +0  |  PODER 50/100", color=MUTED, font_size=dp(5.0), size_hint_x=0.49)
+        self.action = SmallButton(text="DIPLOMACIA", font_size=dp(5.0), size_hint_x=0.24)
         self.action.bind(on_release=lambda *_: self.root_view.open_section("dip"))
         self.add_widget(self.name_label)
         self.add_widget(self.info_label)
         self.add_widget(self.action)
 
     def set_country(self, name):
-        country = self.root_view.game.state.d.get("countries", {}).get(
-            name,
-            {"relation": 0, "power": 50},
-        )
+        country = self.root_view.game.state.d.get("countries", {}).get(name, {"relation": 0, "power": 50})
         self.name_label.text = name.upper()
-        self.info_label.text = (
-            f"RELAÇÃO {country.get('relation', 0):+d}  |  "
-            f"PODER {country.get('power', 50)}/100"
-        )
+        self.info_label.text = f"RELAÇÃO {country.get('relation', 0):+d}  |  PODER {country.get('power', 50)}/100"
 
 
 class V06Root(FloatLayout):
@@ -350,40 +480,15 @@ class V06Root(FloatLayout):
         self.game = game
         self.selected_country = "Brasil"
 
-        self.globe = InteractiveWorldMap(
-            game,
-            on_country=self._country_selected,
-            size_hint=(1, 1),
-        )
+        self.globe = GestureWorldMap(game, on_country=self.select_country, size_hint=(0.93, 0.80), pos_hint={"x": 0.035, "y": 0.10})
         self.add_widget(self.globe)
 
-        self.topbar = TopBar(
-            game,
-            size_hint=(0.83, None),
-            height=dp(38),
-            pos_hint={"center_x": 0.55, "top": 0.988},
-        )
+        self.topbar = TopBar(game, size_hint=(0.82, None), height=dp(39), pos_hint={"x": 0.13, "top": 0.988})
         self.add_widget(self.topbar)
 
-        toolbar = GlassPanel(
-            orientation="vertical",
-            padding=dp(2),
-            spacing=dp(2),
-            bg=(0.02, 0.05, 0.075, 0.90),
-            size_hint=(None, None),
-            width=dp(38),
-            height=dp(218),
-            pos_hint={"x": 0.010, "center_y": 0.53},
-        )
-        for icon, hint, section in [
-            ("gov", "POL", "gov"),
-            ("eco", "ECO", "eco"),
-            ("def", "MIL", "def"),
-            ("dip", "DIP", "dip"),
-            ("news", "MID", "news"),
-            ("save", "SAVE", "save"),
-        ]:
-            b = IconButton(icon=icon, hint=hint, size_hint_y=None, height=dp(32))
+        toolbar = GlassPanel(orientation="vertical", padding=dp(3), spacing=dp(3), bg=(0.02, 0.05, 0.075, 0.95), size_hint=(None, None), width=dp(40), height=dp(242), pos_hint={"x": 0.009, "center_y": 0.52})
+        for icon, hint, section in [("gov", "GAB", "cabinet"), ("eco", "ECO", "eco"), ("def", "MIL", "def"), ("dip", "DIP", "dip"), ("news", "MÍD", "news"), ("save", "SAVE", "save")]:
+            b = IconButton(icon=icon, hint=hint, size_hint_y=None, height=dp(35))
             if section == "save":
                 b.bind(on_release=lambda *_: self.game.save_game())
             else:
@@ -391,115 +496,58 @@ class V06Root(FloatLayout):
             toolbar.add_widget(b)
         self.add_widget(toolbar)
 
-        zoom = GlassPanel(
-            orientation="vertical",
-            padding=dp(2),
-            spacing=dp(2),
-            bg=(0.02, 0.05, 0.075, 0.90),
-            size_hint=(None, None),
-            width=dp(37),
-            height=dp(111),
-            pos_hint={"right": 0.987, "center_y": 0.52},
-        )
-        zoom_items = [
-            ("+", dp(11), lambda *_: self.globe.zoom_by(1.35)),
-            ("-", dp(11), lambda *_: self.globe.zoom_by(1 / 1.35)),
-            ("RESET", dp(4.5), lambda *_: self.globe.reset_view()),
-        ]
-        for txt, font_size, cb in zoom_items:
-            b = SmallButton(
-                text=txt,
-                font_size=font_size,
-                size_hint_y=None,
-                height=dp(33),
-            )
+        zoom = GlassPanel(orientation="vertical", padding=dp(3), spacing=dp(3), bg=(0.02, 0.05, 0.075, 0.95), size_hint=(None, None), width=dp(39), height=dp(126), pos_hint={"right": 0.987, "center_y": 0.52})
+        for txt, cb in [("+", lambda *_: self.globe.zoom_by(1.35)), ("−", lambda *_: self.globe.zoom_by(1 / 1.35)), ("RESET", lambda *_: self.globe.reset_view())]:
+            b = SmallButton(text=txt, font_size=dp(11 if txt != "RESET" else 4.5), size_hint_y=None, height=dp(37))
             b.bind(on_release=cb)
             zoom.add_widget(b)
         self.add_widget(zoom)
 
-        bottom = GlassPanel(
-            orientation="horizontal",
-            padding=dp(2),
-            spacing=dp(2),
-            bg=(0.02, 0.045, 0.07, 0.92),
-            size_hint=(0.58, None),
-            height=dp(32),
-            pos_hint={"center_x": 0.50, "y": 0.012},
-        )
-        for title, section in [
-            ("GABINETE", "gov"),
-            ("ECONOMIA", "eco"),
-            ("POLÍTICA", "gov"),
-            ("MILITAR", "def"),
-            ("DIPLOMACIA", "dip"),
-            ("MÍDIA", "news"),
-        ]:
-            b = SmallButton(text=title, font_size=dp(4.9))
+        bottom = GlassPanel(orientation="horizontal", padding=dp(3), spacing=dp(3), bg=(0.02, 0.045, 0.07, 0.96), size_hint=(0.58, None), height=dp(34), pos_hint={"center_x": 0.54, "y": 0.012})
+        for title, section in [("GABINETE", "cabinet"), ("ECONOMIA", "eco"), ("POLÍTICA", "gov"), ("MILITAR", "def"), ("DIPLOMACIA", "dip"), ("MÍDIA", "news")]:
+            b = SmallButton(text=title, font_size=dp(5.0))
             b.bind(on_release=lambda _btn, s=section: self.open_section(s))
             bottom.add_widget(b)
         self.add_widget(bottom)
 
-        # Keep auxiliary HUD above the bottom menu instead of overlapping it.
-        self.country_panel = SelectedCountryPanel(
-            self,
-            size_hint=(0.31, None),
-            height=dp(27),
-            pos_hint={"x": 0.058, "y": 0.068},
-        )
+        self.country_panel = SelectedCountryPanel(self, size_hint=(0.30, None), height=dp(30), pos_hint={"x": 0.055, "y": 0.060})
         self.add_widget(self.country_panel)
 
-        self.status = GlassPanel(
-            orientation="horizontal",
-            padding=(dp(6), dp(2)),
-            bg=(0.02, 0.04, 0.06, 0.80),
-            size_hint=(0.27, None),
-            height=dp(25),
-            pos_hint={"right": 0.985, "y": 0.070},
-        )
-        self.status_label = label("", color=MUTED, font_size=dp(5.0))
+        self.status = GlassPanel(orientation="horizontal", padding=(dp(7), dp(2)), bg=(0.02, 0.04, 0.06, 0.86), size_hint=(0.27, None), height=dp(27), pos_hint={"right": 0.985, "y": 0.060})
+        self.status_label = label("", color=MUTED, font_size=dp(5.1))
         self.status.add_widget(self.status_label)
         self.add_widget(self.status)
 
-        self.drawer = MediaDrawer(game, size_hint=(1, 1))
-        game.drawer = self.drawer
-        self.add_widget(self.drawer)
+        self.section_panel = GameSectionPanel(self, size_hint=(0.35, 0.72), pos_hint={"right": 0.965, "center_y": 0.50})
+        self.add_widget(self.section_panel)
 
         self.news_overlay = MediaNewsOverlay(game, size_hint=(1, 1))
         game.news_overlay = self.news_overlay
         self.add_widget(self.news_overlay)
 
+        game.drawer = self.section_panel
         self.country_panel.set_country("Brasil")
-        Clock.schedule_once(lambda *_: self.globe.reset_view(), 0.2)
+        Clock.schedule_once(lambda *_: self.refresh(), 0)
 
     def open_section(self, section):
-        if self.game.drawer:
-            self.game.drawer.open(section)
+        self.section_panel.open(section)
 
-    def _country_selected(self, name):
+    def select_country(self, name):
         self.selected_country = name
         self.country_panel.set_country(name)
         country = self.game.state.d.get("countries", {}).get(name)
         if country:
-            self.status_label.text = (
-                f"{name.upper()}  |  REL {country['relation']:+d}  |  "
-                f"PODER {country['power']}/100"
-            )
+            self.status_label.text = f"{name.upper()}  |  REL {country.get('relation', 0):+d}  |  PODER {country.get('power', 50)}/100"
+        if self.section_panel.section == "dip" and not self.section_panel.disabled:
+            self.section_panel.rebuild()
 
     def refresh(self):
         self.topbar.refresh()
         d = self.game.state.d
-        if self.selected_country:
-            country = d.get("countries", {}).get(self.selected_country)
-            if country:
-                self.country_panel.set_country(self.selected_country)
-        if not self.status_label.text:
-            self.status_label.text = (
-                f"MERCADO {d['market_sentiment']:.0f}%  |  "
-                f"CONGRESSO {d['congress']:.0f}%  |  "
-                f"CRISE {d['crisis_risk']:.0f}%"
-            )
-        if self.drawer and not self.drawer.disabled:
-            self.drawer.rebuild()
+        self.status_label.text = f"MERCADO {d['market_sentiment']:.0f}%  |  CONGRESSO {d['congress']:.0f}%  |  CRISE {d['crisis_risk']:.0f}%"
+        self.country_panel.set_country(self.selected_country)
+        if not self.section_panel.disabled and self.section_panel.section and self.section_panel.section != "dip":
+            self.section_panel.rebuild()
 
 
 class GameApp(V05GameApp):
@@ -514,7 +562,6 @@ class GameApp(V05GameApp):
         ensure_media_state(self.state.d)
         ensure_world_countries(self.state.d)
         self.state.save()
-
         self.playing = False
         self.overlay_open = False
         self.drawer = None
