@@ -49,37 +49,41 @@ jobs:
           python -m pip install "setuptools==69.5.1" "wheel==0.43.0"
           python -m pip install "cython==0.29.36" "buildozer==1.5.0"
 
-      - name: Prepare pinned python-for-android and SDL2
+      - name: Prepare pinned python-for-android
         run: |
           git clone --depth 1 --branch v2024.01.21 \
             https://github.com/kivy/python-for-android.git .p4a
-          sed -i \
-            -e 's/2\.28\.5/2.30.11/' \
-            -e 's/a344eb827a03045c9b399e99af4af13d/bea190b480f6df249db29eb3bacfe41e/' \
-            .p4a/pythonforandroid/recipes/sdl2/__init__.py
 
-      - name: Validate configured SDL2 release
+      - name: Validate pinned Android toolchain
         run: |
           python - <<'PY'
           import ast
           from pathlib import Path
-          recipe_path = Path(".p4a/pythonforandroid/recipes/sdl2/__init__.py")
-          tree = ast.parse(recipe_path.read_text(encoding="utf-8"), recipe_path)
-          configured = {}
-          for node in ast.walk(tree):
-              if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                  target = node.targets[0]
-                  if isinstance(target, ast.Name) and target.id in {"version", "url", "md5sum"}:
-                      configured[target.id] = ast.literal_eval(node.value)
-          assert configured.get("version") == "2.30.11", configured
-          assert configured.get("md5sum") == "bea190b480f6df249db29eb3bacfe41e", configured
-          print(configured)
+
+          def recipe_version(name):
+              recipe_path = Path(f".p4a/pythonforandroid/recipes/{name}/__init__.py")
+              tree = ast.parse(recipe_path.read_text(encoding="utf-8"), recipe_path)
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                      target = node.targets[0]
+                      if isinstance(target, ast.Name) and target.id == "version":
+                          return ast.literal_eval(node.value)
+              raise AssertionError(f"No version found in {recipe_path}")
+
+          expected = {
+              "hostpython3": "3.11.5",
+              "python3": "3.11.5",
+              "sdl2": "2.28.5",
+          }
+          configured = {name: recipe_version(name) for name in expected}
+          assert configured == expected, configured
+          print("Pinned p4a recipe versions:", configured)
           PY
 
       - name: Build debug APK
         run: |
           rm -rf .buildozer ~/.buildozer
-          yes | buildozer -v android debug
+          buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
