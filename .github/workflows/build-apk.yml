@@ -64,12 +64,15 @@ jobs:
           "$ANDROIDSDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROIDSDK" \
             "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
-          # Buildozer 1.5.0 can look for the legacy tools/bin location.
-          mkdir -p "$ANDROIDSDK/tools"
-          ln -sfn ../cmdline-tools/latest/bin "$ANDROIDSDK/tools/bin"
+          # Buildozer 1.5.0 invokes SDK manager through tools/bin. A symlink to
+          # only cmdline-tools/latest/bin breaks sdkmanager because its Java
+          # libraries are resolved relative to the launcher directory.
+          rm -rf "$ANDROIDSDK/tools"
+          cp -a "$ANDROIDSDK/cmdline-tools/latest" "$ANDROIDSDK/tools"
 
           test -x "$ANDROIDSDK/build-tools/33.0.2/aidl"
           test -x "$ANDROIDSDK/tools/bin/sdkmanager"
+          "$ANDROIDSDK/tools/bin/sdkmanager" --sdk_root="$ANDROIDSDK" --list >/dev/null
 
       - name: Prepare pinned python-for-android
         run: |
