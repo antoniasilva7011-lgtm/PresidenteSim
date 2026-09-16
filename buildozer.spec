@@ -46,7 +46,7 @@ icon.filename =
 orientation = landscape
 fullscreen = 1
 android.presplash_color = #08111F
-android.apptheme = "@android:style/Theme.Material.NoActionBar"
+android.apptheme = @android:style/Theme.Material.NoActionBar
 services =
 
 [buildozer]
