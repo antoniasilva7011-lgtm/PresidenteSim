@@ -54,16 +54,11 @@ jobs:
           git clone --depth 1 --branch v2024.01.21 \
             https://github.com/kivy/python-for-android.git .p4a
 
-          # Update the release and its digest together. Leaving the 2.28.5 MD5
-          # behind makes p4a reject the valid SDL 2.30.11 archive.
-          grep -Fq 'version = "2.28.5"' .p4a/pythonforandroid/recipes/sdl2/__init__.py
-          grep -Fq 'url = "https://github.com/libsdl-org/SDL/releases/download/release-{version}/SDL2-{version}.tar.gz"' \
-            .p4a/pythonforandroid/recipes/sdl2/__init__.py
-          grep -Fq 'md5sum = "a344eb827a03045c9b399e99af4af13d"' \
-            .p4a/pythonforandroid/recipes/sdl2/__init__.py
+          # The pinned recipe uses single-quoted assignments. Replace only the
+          # old values so this does not depend on its quoting or whitespace.
           sed -i \
-            -e 's/version = "2.28.5"/version = "2.30.11"/' \
-            -e 's/md5sum = "a344eb827a03045c9b399e99af4af13d"/md5sum = "bea190b480f6df249db29eb3bacfe41e"/' \
+            -e 's/2\.28\.5/2.30.11/' \
+            -e 's/a344eb827a03045c9b399e99af4af13d/bea190b480f6df249db29eb3bacfe41e/' \
             .p4a/pythonforandroid/recipes/sdl2/__init__.py
 
       - name: Validate configured SDL2 release
