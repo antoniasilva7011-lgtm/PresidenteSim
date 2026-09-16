@@ -13,7 +13,6 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      PIP_CONSTRAINT: ${{ github.workspace }}/.github/pip-constraints.txt
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
       ANDROIDSDK: ${{ github.workspace }}/.android-sdk
       ANDROID_HOME: ${{ github.workspace }}/.android-sdk
@@ -48,9 +47,8 @@ jobs:
 
       - name: Install Buildozer
         run: |
-          python -m pip install --upgrade "pip==24.0"
-          python -m pip install "setuptools==69.5.1" "wheel==0.43.0"
-          python -m pip install "cython==0.29.36" "buildozer==1.5.0"
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "buildozer==1.5.0"
 
       - name: Prepare licensed Android SDK for Buildozer
         run: |
@@ -64,9 +62,6 @@ jobs:
           "$ANDROIDSDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROIDSDK" \
             "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
-          # Buildozer 1.5.0 invokes SDK manager through tools/bin. A symlink to
-          # only cmdline-tools/latest/bin breaks sdkmanager because its Java
-          # libraries are resolved relative to the launcher directory.
           rm -rf "$ANDROIDSDK/tools"
           cp -a "$ANDROIDSDK/cmdline-tools/latest" "$ANDROIDSDK/tools"
 
@@ -76,7 +71,7 @@ jobs:
 
       - name: Prepare pinned python-for-android
         run: |
-          git clone --depth 1 --branch v2024.01.21 \
+          git clone --depth 1 --branch v2026.05.09 \
             https://github.com/kivy/python-for-android.git .p4a
 
       - name: Validate pinned Android toolchain
@@ -96,9 +91,10 @@ jobs:
               raise AssertionError(f"No version found in {recipe_path}")
 
           expected = {
-              "hostpython3": "3.11.5",
-              "python3": "3.11.5",
-              "sdl2": "2.28.5",
+              "hostpython3": "3.14.2",
+              "python3": "3.14.2",
+              "kivy": "2.3.1",
+              "sdl2": "2.30.11",
           }
           configured = {name: recipe_version(name) for name in expected}
           assert configured == expected, configured
