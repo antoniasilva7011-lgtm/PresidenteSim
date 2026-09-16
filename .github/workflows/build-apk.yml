@@ -49,11 +49,17 @@ jobs:
           python -m pip install "setuptools==69.5.1" "wheel==0.43.0"
           python -m pip install "cython==0.29.36" "buildozer==1.5.0"
 
-      - name: Validate python-for-android tag
+      - name: Prepare pinned python-for-android and SDL2
         run: |
-          git ls-remote --exit-code --tags \
-            https://github.com/kivy/python-for-android.git \
-            refs/tags/v2024.01.21
+          git clone --depth 1 --branch v2024.01.21 \
+            https://github.com/kivy/python-for-android.git .p4a
+
+          # p4a v2024.01.21 pins SDL 2.28.5, whose Android sensor backend uses
+          # ALooper_pollAll. SDL 2.30.11 uses ALooper_pollOnce and builds with NDK r27c.
+          grep -Fq "version = '2.28.5'" .p4a/pythonforandroid/recipes/sdl2/__init__.py
+          sed -i "s/version = '2.28.5'/version = '2.30.11'/" \
+            .p4a/pythonforandroid/recipes/sdl2/__init__.py
+          grep -Fq "version = '2.30.11'" .p4a/pythonforandroid/recipes/sdl2/__init__.py
 
       - name: Build debug APK
         run: |

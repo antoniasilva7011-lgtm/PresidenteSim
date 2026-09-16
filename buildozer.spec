@@ -15,6 +15,7 @@ source.dir = .
 
 # (str) List of source files to include
 source.include_exts = py,json,png,jpg,kv,atlas
+source.exclude_dirs = .git,.github,.p4a
 
 # (str) Application version
 version = 0.1.0
@@ -33,6 +34,8 @@ android.permissions = INTERNET
 # Pin p4a instead of following its moving master branch. This release supports
 # the Python/Kivy combination above and makes the Android toolchain repeatable.
 p4a.branch = v2024.01.21
+# The workflow prepares this pinned p4a tree and updates only its SDL2 recipe.
+p4a.source_dir = .p4a
 # (str) Presplash of the application
 presplash.filename =
 
