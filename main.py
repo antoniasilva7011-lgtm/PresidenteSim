@@ -1,4 +1,4 @@
-from v04_app import GameApp
+from v05_app import GameApp
 
 
 if __name__ == "__main__":
