@@ -18,7 +18,7 @@ source.include_exts = py,json,png,jpg,kv,atlas
 source.exclude_dirs = .git,.github,.p4a
 
 # (str) Application version
-version = 0.5.0
+version = 0.6.0
 
 # Use the Python and Kivy versions supplied and tested by the pinned p4a release.
 # hostpython3 is an internal build dependency and must not be an app requirement.
