@@ -3,12 +3,17 @@ extends Control
 signal country_clicked(country_id: String)
 
 const GEOJSON_PATH: String = "res://data/world.geojson"
+const BRAZIL_STATES_PATH: String = "res://data/brazil_states.geojson"
 const TEXTURE_PATH: String = "res://data/world_texture.jpg"
 const MIN_ZOOM: float = 1.0
 const MAX_ZOOM: float = 8.0
+const BRAZIL_STATES_MIN_ZOOM: float = 1.85
+const BRAZIL_STATE_LABEL_MIN_ZOOM: float = 2.45
 
 var features: Array = []
 var labels: Array = []
+var brazil_states: Array = []
+var brazil_state_labels: Array = []
 var physical_texture: Texture2D = null
 var zoom: float = 1.0
 var pan: Vector2 = Vector2.ZERO
@@ -26,6 +31,7 @@ var selected_id: String = "BRA"
 func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     _load_geojson()
+    _load_brazil_states()
     _load_physical_texture()
     WorldState.country_selected.connect(_on_country_selected)
     resized.connect(_on_resized)
@@ -87,6 +93,32 @@ func _load_geojson() -> void:
             "area_hint": _feature_area_hint(coords, gtype),
             "min_label": float(props.get("MIN_LABEL", 3.0)),
             "homepart": int(props.get("HOMEPART", 1))
+        })
+
+func _load_brazil_states() -> void:
+    brazil_states.clear()
+    brazil_state_labels.clear()
+    if not FileAccess.file_exists(BRAZIL_STATES_PATH):
+        push_warning("brazil_states.geojson ausente; estados serão ocultados.")
+        return
+    var raw := FileAccess.get_file_as_string(BRAZIL_STATES_PATH)
+    var parsed: Variant = JSON.parse_string(raw)
+    if typeof(parsed) != TYPE_DICTIONARY:
+        push_warning("brazil_states.geojson inválido")
+        return
+    brazil_states = (parsed as Dictionary).get("features", []) as Array
+    for f_variant: Variant in brazil_states:
+        var f: Dictionary = f_variant as Dictionary
+        var props: Dictionary = f.get("properties", {}) as Dictionary
+        var geom: Dictionary = f.get("geometry", {}) as Dictionary
+        var coords: Variant = geom.get("coordinates", [])
+        var gtype := str(geom.get("type", ""))
+        var center := _feature_geo_center(coords, gtype)
+        brazil_state_labels.append({
+            "name": str(props.get("NAME", "Estado")),
+            "postal": str(props.get("POSTAL", "")),
+            "geo": center,
+            "area_hint": _feature_area_hint(coords, gtype)
         })
 
 func reset_view() -> void:
@@ -222,17 +254,24 @@ func _draw() -> void:
         elif gtype == "MultiPolygon":
             for poly_variant: Variant in coords as Array:
                 _draw_polygon_group(poly_variant as Array, fill, id == selected_id)
+
+    if zoom >= BRAZIL_STATES_MIN_ZOOM:
+        _draw_brazil_states()
     _draw_labels()
+    if zoom >= BRAZIL_STATE_LABEL_MIN_ZOOM:
+        _draw_brazil_state_labels()
 
 func _draw_world_base() -> void:
     if physical_texture != null:
-        draw_texture_rect(physical_texture, Rect2(pan, size * zoom), false, Color(0.76, 0.82, 0.82, 1.0))
-        draw_rect(Rect2(Vector2.ZERO, size), Color(0.01, 0.05, 0.07, 0.18), true)
+        draw_texture_rect(physical_texture, Rect2(pan, size * zoom), false, Color(0.72, 0.78, 0.76, 1.0))
+        draw_rect(Rect2(Vector2.ZERO, size), Color(0.005, 0.028, 0.045, 0.26), true)
+        var horizon := Rect2(Vector2(0, size.y * 0.52), Vector2(size.x, size.y * 0.48))
+        draw_rect(horizon, Color(0.0, 0.02, 0.035, 0.08), true)
         return
-    draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.08, 0.12, 1.0), true)
+    draw_rect(Rect2(Vector2.ZERO, size), Color(0.012, 0.055, 0.082, 1.0), true)
 
 func _draw_geo_grid() -> void:
-    var grid_color := Color(0.55, 0.78, 0.84, 0.045)
+    var grid_color := Color(0.42, 0.74, 0.82, 0.038)
     for lon: int in range(-150, 180, 30):
         draw_line(_project([float(lon), -90.0]), _project([float(lon), 90.0]), grid_color, 1.0)
     for lat: int in range(-60, 90, 30):
@@ -248,10 +287,36 @@ func _draw_polygon_group(rings: Array, fill: Color, selected: bool) -> void:
         return
     draw_colored_polygon(outer, fill)
     if selected:
-        draw_polyline(outer, Color(0.10, 0.85, 1.0, 0.25), 6.0, true)
-        draw_polyline(outer, Color(0.62, 0.98, 1.0, 1.0), 2.2, true)
+        draw_polyline(outer, Color(0.08, 0.75, 0.92, 0.20), 7.0, true)
+        draw_polyline(outer, Color(0.54, 0.96, 1.0, 1.0), 2.6, true)
     else:
-        draw_polyline(outer, Color(0.76, 0.84, 0.82, 0.66), 1.0, true)
+        draw_polyline(outer, Color(0.78, 0.84, 0.83, 0.54), 0.9, true)
+
+func _draw_brazil_states() -> void:
+    if brazil_states.is_empty():
+        return
+    var strong := selected_id == "BRA"
+    var line_color := Color(0.72, 0.96, 1.0, 0.86) if strong else Color(0.78, 0.88, 0.87, 0.52)
+    var width := 1.35 if strong else 0.85
+    for f_variant: Variant in brazil_states:
+        var f: Dictionary = f_variant as Dictionary
+        var geom: Dictionary = f.get("geometry", {}) as Dictionary
+        var gtype := str(geom.get("type", ""))
+        var coords: Variant = geom.get("coordinates", [])
+        if gtype == "Polygon":
+            _draw_state_rings(coords as Array, line_color, width)
+        elif gtype == "MultiPolygon":
+            for poly_variant: Variant in coords as Array:
+                _draw_state_rings(poly_variant as Array, line_color, width)
+
+func _draw_state_rings(rings: Array, color: Color, width: float) -> void:
+    if rings.is_empty():
+        return
+    var outer := PackedVector2Array()
+    for c_variant: Variant in rings[0] as Array:
+        outer.append(_project(c_variant as Array))
+    if outer.size() >= 2:
+        draw_polyline(outer, color, width, true)
 
 func _draw_labels() -> void:
     var font: Font = get_theme_default_font()
@@ -276,18 +341,50 @@ func _draw_labels() -> void:
         var id: String = str(item["id"])
         var name: String = str(item["name"]).to_upper()
         var selected: bool = id == selected_id
-        var font_size: int = int(clampf(10.0 + sqrt(zoom) * 2.2, 11.0, 18.0))
+        if selected and id == "BRA" and zoom >= BRAZIL_STATE_LABEL_MIN_ZOOM:
+            # At close zoom the state names become primary; keep country label smaller.
+            name = "BRASIL"
+        var font_size: int = int(clampf(10.0 + sqrt(zoom) * 2.1, 11.0, 18.0))
         if selected:
             font_size += 2
         var text_size: Vector2 = font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
         var rect := Rect2(p - Vector2(text_size.x * 0.5 + 5.0, text_size.y * 0.5 + 3.0), text_size + Vector2(10.0, 6.0))
         if not selected and _intersects_any(rect, occupied):
             continue
-        var color := Color(0.97, 0.99, 0.98, 0.94)
+        var color := Color(0.95, 0.98, 0.97, 0.92)
         if selected:
-            color = Color(0.64, 0.98, 1.0, 1.0)
-            draw_rect(rect, Color(0.02, 0.11, 0.14, 0.80), true)
+            color = Color(0.66, 0.98, 1.0, 1.0)
+            draw_rect(rect, Color(0.01, 0.08, 0.11, 0.74), true)
         draw_string(font, p - Vector2(text_size.x * 0.5, -font_size * 0.35), name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+        occupied.append(rect)
+
+func _draw_brazil_state_labels() -> void:
+    if brazil_state_labels.is_empty():
+        return
+    var font := get_theme_default_font()
+    var occupied: Array[Rect2] = []
+    var ordered: Array = brazil_state_labels.duplicate()
+    ordered.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+        return float(a.get("area_hint", 0.0)) > float(b.get("area_hint", 0.0))
+    )
+    for item_variant: Variant in ordered:
+        var item: Dictionary = item_variant as Dictionary
+        var geo: Vector2 = item.get("geo", Vector2.INF) as Vector2
+        if geo == Vector2.INF:
+            continue
+        var p := _project([geo.x, geo.y])
+        if p.x < -80.0 or p.y < -40.0 or p.x > size.x + 80.0 or p.y > size.y + 40.0:
+            continue
+        var full_name := str(item.get("name", "Estado")).to_upper()
+        var postal := str(item.get("postal", ""))
+        var label_text := full_name if zoom >= 3.35 or postal.is_empty() else postal.to_upper()
+        var font_size := int(clampf(9.0 + sqrt(zoom) * 1.25, 10.0, 14.0))
+        var text_size := font.get_string_size(label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+        var rect := Rect2(p - Vector2(text_size.x * 0.5 + 3.0, text_size.y * 0.5 + 2.0), text_size + Vector2(6.0, 4.0))
+        if _intersects_any(rect, occupied):
+            continue
+        draw_rect(rect, Color(0.015, 0.055, 0.070, 0.62), true)
+        draw_string(font, p - Vector2(text_size.x * 0.5, -font_size * 0.33), label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.84, 0.98, 1.0, 0.96))
         occupied.append(rect)
 
 func _label_min_zoom(item: Dictionary) -> float:
@@ -313,13 +410,13 @@ func _intersects_any(rect: Rect2, occupied: Array[Rect2]) -> bool:
 
 func _country_color(id: String) -> Color:
     if id == selected_id:
-        return Color(0.02, 0.52, 0.64, 0.44)
+        return Color(0.015, 0.42, 0.54, 0.36)
     var c: Dictionary = WorldState.countries.get(id, {}) as Dictionary
     if bool(c.get("war", false)):
-        return Color(0.64, 0.08, 0.08, 0.60)
+        return Color(0.64, 0.08, 0.08, 0.58)
     if bool(c.get("sanctioned", false)):
-        return Color(0.70, 0.39, 0.06, 0.48)
-    return Color(0.04, 0.10, 0.10, 0.18)
+        return Color(0.70, 0.39, 0.06, 0.44)
+    return Color(0.015, 0.055, 0.060, 0.12)
 
 func _select_at(pos: Vector2) -> void:
     var best_id: String = ""
