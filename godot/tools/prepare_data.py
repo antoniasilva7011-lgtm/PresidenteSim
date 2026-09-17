@@ -47,6 +47,8 @@ for feature in parsed["features"]:
         "ADM0_A3": props.get("ADM0_A3") or props.get("ISO_A3") or "",
         "GEOUNIT": props.get("GEOUNIT") or props.get("NAME_LONG") or props.get("NAME") or "Unknown",
         "GU_A3": props.get("GU_A3") or props.get("ADM0_A3") or props.get("ISO_A3") or "",
+        "NAME_PT": props.get("NAME_PT") or "",
+        "NAME_EN": props.get("NAME_EN") or "",
         "TYPE": props.get("TYPE") or "",
         "HOMEPART": props.get("HOMEPART", 1),
         "MIN_LABEL": props.get("MIN_LABEL", 3),
