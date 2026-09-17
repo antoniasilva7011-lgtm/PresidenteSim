@@ -24,10 +24,12 @@ func _ready() -> void:
     _build_info_panel()
     _build_section_panel()
     _build_event_strip()
+    _build_version_badge()
     WorldState.country_selected.connect(_refresh_country)
     WorldState.simulation_changed.connect(_refresh_all)
     WorldState.event_created.connect(_show_event)
     _refresh_all()
+    _build_startup_flow()
 
 func _build_background() -> void:
     var bg := ColorRect.new()
@@ -201,6 +203,25 @@ func _build_event_strip() -> void:
     panel.add_child(event_label)
     add_child(panel)
 
+func _build_version_badge() -> void:
+    var badge := Label.new()
+    badge.text = "v0.3 • GODOT"
+    badge.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+    badge.offset_left = -170
+    badge.offset_right = -16
+    badge.offset_top = -34
+    badge.offset_bottom = -12
+    badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+    badge.add_theme_font_size_override("font_size", 12)
+    badge.modulate = Color(0.55, 0.72, 0.78)
+    add_child(badge)
+
+func _build_startup_flow() -> void:
+    var flow := Control.new()
+    flow.name = "StartupFlow"
+    flow.set_script(load("res://scripts/startup_flow.gd"))
+    add_child(flow)
+
 func _open_section(section: String) -> void:
     map_view.visible = section != "cabinet"
     cabinet_container.visible = section == "cabinet"
@@ -251,7 +272,7 @@ func _build_economy(c: Dictionary) -> void:
 
 func _build_government(c: Dictionary) -> void:
     title_label.text = "GOVERNO / POLÍTICA"
-    content_box.add_child(_label("Aprovação: %.1f%%\nEstabilidade: %.1f%%\nRelação com imprensa: %.1f%%" % [c.get("approval",0.0), c.get("stability",0.0), WorldState.press_relation], 18))
+    content_box.add_child(_label("Líder: %s\nPartido: %s\nAprovação: %.1f%%\nEstabilidade: %.1f%%\nRelação com imprensa: %.1f%%" % [WorldState.player_leader_name, WorldState.player_party, c.get("approval",0.0), c.get("stability",0.0), WorldState.press_relation], 18))
     content_box.add_child(_button("PRONUNCIAMENTO NACIONAL", func(): WorldState.political_action("speech")))
     content_box.add_child(_button("ENVIAR REFORMA AO CONGRESSO", func(): WorldState.political_action("reform")))
     content_box.add_child(_button("AVANÇAR 7 DIAS", func(): WorldState.advance_days(7)))
@@ -267,11 +288,12 @@ func _build_diplomacy(c: Dictionary) -> void:
     title_label.text = "DIPLOMACIA"
     var id := WorldState.selected_country_id
     var relation := WorldState.relation_between(WorldState.player_country_id, id)
-    content_box.add_child(_label("%s\nPopulação: %s\nPIB: %.2f tri\nPoder militar: %d/100\nRelação com Brasil: %+d" % [c.get("name","-"), _fmt_population(int(c.get("population",0))), c.get("gdp_trillion",0.0), int(c.get("military_power",0)), relation], 18))
+    var player_name: String = str(WorldState.player_country().get("name", "Seu país"))
+    content_box.add_child(_label("%s\nPopulação: %s\nPIB: %.2f tri\nPoder militar: %d/100\nRelação com %s: %+d" % [c.get("name","-"), _fmt_population(int(c.get("population",0))), c.get("gdp_trillion",0.0), int(c.get("military_power",0)), player_name, relation], 18))
     if id != WorldState.player_country_id:
         content_box.add_child(_button("NEGOCIAR (+5 RELAÇÃO)", func(): WorldState.negotiate_with(id)))
         content_box.add_child(_button("IMPOSTAR SANÇÕES", func(): WorldState.impose_sanctions(id)))
-    content_box.add_child(_label("PAÍSES CARREGADOS: %d" % WorldState.countries.size(), 15))
+    content_box.add_child(_label("ENTIDADES DE GOVERNO CARREGADAS: %d" % WorldState.countries.size(), 15))
 
 func _build_media(_c: Dictionary) -> void:
     title_label.text = "MÍDIA / IMPRENSA"
