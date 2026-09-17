@@ -23,8 +23,6 @@ var _country_ids: Array[String] = []
 var _presenter_panel: PanelContainer
 var _pulse: float = 0.0
 
-# Persisted wizard state. Widgets are recreated every step on mobile,
-# so choices must not live only inside the current controls.
 var selected_country_id: String = "BRA"
 var selected_leader_name: String = "Presidente"
 var selected_party: String = "Independente"
@@ -47,7 +45,7 @@ func _process(delta: float) -> void:
     if _presenter_panel == null or not is_instance_valid(_presenter_panel):
         return
     _pulse += delta
-    var k := 0.95 + sin(_pulse * 2.0) * 0.025
+    var k := 0.97 + sin(_pulse * 1.8) * 0.015
     _presenter_panel.modulate = Color(k, k, k, 1.0)
 
 func _clear() -> void:
@@ -121,16 +119,13 @@ func _build_wizard() -> void:
     var outer := VBoxContainer.new()
     outer.add_theme_constant_override("separation", 10)
     card.add_child(outer)
-
     outer.add_child(_title("PRESIDENTE SIMULATOR", 36))
     var subtitle := _title("NOVA PARTIDA • FORMAÇÃO DO GOVERNO", 18)
     subtitle.modulate = Color(0.43, 0.91, 0.98)
     outer.add_child(subtitle)
-
     step_label = _caption("")
     step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     outer.add_child(step_label)
-
     var progress := HBoxContainer.new()
     progress.name = "Progress"
     progress.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -144,12 +139,10 @@ func _build_wizard() -> void:
         chip.add_theme_font_size_override("font_size", 12)
         progress.add_child(chip)
     outer.add_child(progress)
-
     var body := HBoxContainer.new()
     body.size_flags_vertical = Control.SIZE_EXPAND_FILL
     body.add_theme_constant_override("separation", 16)
     outer.add_child(body)
-
     var preview_panel := PanelContainer.new()
     preview_panel.custom_minimum_size = Vector2(365, 0)
     preview_panel.add_theme_stylebox_override("panel", _style(Color(0.014, 0.064, 0.083, 0.97), Color(0.23, 0.70, 0.80, 0.58), 10))
@@ -164,12 +157,10 @@ func _build_wizard() -> void:
     country_preview.add_theme_font_size_override("font_size", 16)
     country_preview.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     preview_box.add_child(country_preview)
-
     stage_root = VBoxContainer.new()
     stage_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     stage_root.add_theme_constant_override("separation", 14)
     body.add_child(stage_root)
-
     var controls := HBoxContainer.new()
     controls.add_theme_constant_override("separation", 8)
     outer.add_child(controls)
@@ -186,7 +177,6 @@ func _build_wizard() -> void:
     next_button.custom_minimum_size = Vector2(270, 48)
     next_button.pressed.connect(_next_step)
     controls.add_child(next_button)
-
     _show_step(0, false)
 
 func _capture_step_state() -> void:
@@ -217,12 +207,10 @@ func _show_step(index: int, capture: bool = true) -> void:
     step_label.text = "ETAPA %d DE %d • %s" % [step_index + 1, STEPS.size(), STEPS[step_index]]
     back_button.disabled = step_index == 0
     next_button.text = "INICIAR MANDATO" if step_index == STEPS.size() - 1 else "PRÓXIMO"
-
     var progress := card.get_child(0).get_node("Progress") as HBoxContainer
     for i in range(progress.get_child_count()):
         var chip := progress.get_child(i) as Label
         chip.modulate = Color(0.50, 0.96, 1.0) if i == step_index else Color(0.48, 0.57, 0.62)
-
     match step_index:
         0: _build_country_step()
         1: _build_leader_step()
@@ -380,28 +368,25 @@ func _build_inauguration_news() -> void:
     root.add_child(body)
 
     _presenter_panel = PanelContainer.new()
-    _presenter_panel.custom_minimum_size = Vector2(410, 0)
-    _presenter_panel.add_theme_stylebox_override("panel", _style(Color(0.025, 0.10, 0.13, 1.0), Color(0.28, 0.75, 0.83, 0.65), 10))
+    _presenter_panel.custom_minimum_size = Vector2(430, 0)
+    _presenter_panel.add_theme_stylebox_override("panel", _style(Color(0.016, 0.075, 0.10, 1.0), Color(0.28, 0.75, 0.83, 0.68), 10))
     body.add_child(_presenter_panel)
     var studio := VBoxContainer.new()
     studio.alignment = BoxContainer.ALIGNMENT_CENTER
-    studio.add_theme_constant_override("separation", 10)
+    studio.add_theme_constant_override("separation", 7)
     _presenter_panel.add_child(studio)
-    var screen := PanelContainer.new()
-    screen.custom_minimum_size = Vector2(250, 250)
-    screen.add_theme_stylebox_override("panel", _style(Color(0.05, 0.22, 0.28, 1.0), Color(0.35, 0.90, 1.0, 0.65), 8))
-    var screen_label := Label.new()
-    screen_label.text = "PRESIDENTE\nNEWS\n\nNEWSROOM"
-    screen_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    screen_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    screen_label.add_theme_font_size_override("font_size", 23)
-    screen.add_child(screen_label)
-    studio.add_child(screen)
-    studio.add_child(_title("ÂNCORA • NEWSROOM", 16))
+
+    var anchor := Control.new()
+    anchor.custom_minimum_size = Vector2(350, 330)
+    anchor.set_script(load("res://scripts/news_anchor.gd"))
+    studio.add_child(anchor)
+    var presenter_name := _title("HELENA MORAES • PRESIDENTE NEWS", 15)
+    presenter_name.modulate = Color(0.82, 0.96, 1.0)
+    studio.add_child(presenter_name)
     var live := Label.new()
-    live.text = "● AO VIVO"
+    live.text = "● AO VIVO   •   NEWSROOM CENTRAL"
     live.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    live.modulate = Color(1.0, 0.35, 0.28)
+    live.modulate = Color(1.0, 0.42, 0.35)
     studio.add_child(live)
 
     var story := VBoxContainer.new()
@@ -409,32 +394,47 @@ func _build_inauguration_news() -> void:
     story.add_theme_constant_override("separation", 10)
     body.add_child(story)
     var country: Dictionary = WorldState.player_country()
+
+    var breaking := Label.new()
+    breaking.text = "PLANTÃO • TRANSIÇÃO DE PODER"
+    breaking.add_theme_font_size_override("font_size", 13)
+    breaking.modulate = Color(1.0, 0.78, 0.28)
+    story.add_child(breaking)
     story.add_child(_title("NOVO GOVERNO TOMA POSSE", 31))
+
     var lead := Label.new()
-    lead.text = "%s assume o governo de %s representando %s." % [WorldState.player_leader_name, country.get("name", "o país"), WorldState.player_party]
-    lead.add_theme_font_size_override("font_size", 20)
+    lead.text = "%s assume o governo de %s representando %s. O país acompanha as primeiras horas do novo mandato." % [WorldState.player_leader_name, country.get("name", "o país"), WorldState.player_party]
+    lead.add_theme_font_size_override("font_size", 19)
     lead.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     story.add_child(lead)
+
+    var stats_panel := PanelContainer.new()
+    stats_panel.add_theme_stylebox_override("panel", _style(Color(0.012, 0.045, 0.060, 0.94), Color(0.14, 0.37, 0.43, 0.7), 8))
     var stats := Label.new()
-    stats.text = "APROVAÇÃO  %.0f%%    •    PIB  %.2f tri\nINFLAÇÃO  %.1f%%    •    ESTABILIDADE  %.0f%%\nDIFICULDADE  %s    •    PROMESSA  %s" % [
+    stats.text = "APROVAÇÃO  %.0f%%    •    PIB  %.2f tri\nINFLAÇÃO  %.1f%%    •    ESTABILIDADE  %.0f%%\nDIFICULDADE  %s\nPROMESSA  %s" % [
         float(country.get("approval", 0.0)), float(country.get("gdp_trillion", 0.0)), float(country.get("inflation", 0.0)),
         float(country.get("stability", 0.0)), WorldState.game_difficulty, WorldState.campaign_promise
     ]
-    stats.add_theme_font_size_override("font_size", 17)
-    story.add_child(stats)
+    stats.add_theme_font_size_override("font_size", 16)
+    stats_panel.add_child(stats)
+    story.add_child(stats_panel)
+
     var challenge := Label.new()
     challenge.text = _opening_challenge(country)
-    challenge.add_theme_font_size_override("font_size", 17)
+    challenge.add_theme_font_size_override("font_size", 16)
     challenge.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     challenge.modulate = Color(0.82, 0.88, 0.91)
     story.add_child(challenge)
 
+    var ticker_panel := PanelContainer.new()
+    ticker_panel.add_theme_stylebox_override("panel", _style(Color(0.16, 0.045, 0.025, 0.95), Color(0.62, 0.27, 0.10, 0.85), 3))
     var ticker := Label.new()
-    ticker.text = "BREAKING • MERCADOS REAGEM À POSSE • GABINETE PREPARA PRIMEIRAS MEDIDAS • DIPLOMACIA OBSERVA NOVO GOVERNO • IMPRENSA COBRA PRIORIDADES"
+    ticker.text = "BREAKING  •  MERCADOS REAGEM À POSSE  •  GABINETE PREPARA PRIMEIRAS MEDIDAS  •  DIPLOMACIA OBSERVA NOVO GOVERNO  •  IMPRENSA COBRA PRIORIDADES"
     ticker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    ticker.add_theme_font_size_override("font_size", 14)
-    ticker.modulate = Color(1.0, 0.80, 0.30)
-    root.add_child(ticker)
+    ticker.add_theme_font_size_override("font_size", 13)
+    ticker.modulate = Color(1.0, 0.86, 0.62)
+    ticker_panel.add_child(ticker)
+    root.add_child(ticker_panel)
 
     var actions := HBoxContainer.new()
     actions.add_theme_constant_override("separation", 8)
@@ -476,7 +476,6 @@ func _build_briefing() -> void:
     var sub := _caption("%s • relatório inicial de governo" % str(country.get("name", "País")).to_upper(), 16)
     sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     root.add_child(sub)
-
     var columns := HBoxContainer.new()
     columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
     columns.add_theme_constant_override("separation", 14)
@@ -484,7 +483,6 @@ func _build_briefing() -> void:
     columns.add_child(_brief_card("SITUAÇÃO INTERNA", "Aprovação: %.0f%%\nEstabilidade: %.0f%%\nInflação: %.1f%%\nDesemprego: %.1f%%\nDívida/PIB: %.1f%%" % [float(country.get("approval",0)), float(country.get("stability",0)), float(country.get("inflation",0)), float(country.get("unemployment",0)), float(country.get("debt_gdp",0))]))
     columns.add_child(_brief_card("SEGURANÇA E PODER", "Poder militar: %d/100\nDefesa: %.1f%% do PIB\nTensão global: %.0f%%\nTesouro: %.1f bi\nRelação com imprensa: %.0f%%" % [int(country.get("military_power",0)), WorldState.defense_spending, WorldState.global_tension, WorldState.treasury, WorldState.press_relation]))
     columns.add_child(_brief_card("AGENDA DO MANDATO", "Promessa principal:\n%s\n\nPrioridade imediata:\n%s\n\nGabinete inicial: %d ministros-chave" % [WorldState.campaign_promise, _opening_challenge(country).replace("PRIMEIRO DESAFIO: ", ""), WorldState.cabinet.size()]))
-
     var enter := Button.new()
     enter.text = "ENTRAR NA CENTRAL DE COMANDO"
     enter.custom_minimum_size = Vector2(0, 56)
