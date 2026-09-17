@@ -113,7 +113,7 @@ jobs:
       - name: Upload Godot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Presidente-Simulator-Godot-APK-v0.5
+          name: Presidente-Simulator-Godot-APK-v0.6
           path: godot-build/PresidenteSim-Godot.apk
           if-no-files-found: error
           retention-days: 14
