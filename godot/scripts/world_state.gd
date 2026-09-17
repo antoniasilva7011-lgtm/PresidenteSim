@@ -9,6 +9,9 @@ var month: int = 9
 var year: int = 2026
 var selected_country_id: String = "BRA"
 var player_country_id: String = "BRA"
+var player_leader_name: String = "Presidente"
+var player_party: String = "Independente"
+var game_difficulty: String = "Normal"
 var countries: Dictionary = {}
 var treasury: float = 420.0
 var tax_rate: float = 28.0
@@ -73,6 +76,21 @@ func merge_geo_country(id: String, name: String) -> void:
         "sanctioned": false,
         "war": false
     }
+
+func start_new_game(country_id: String, leader_name: String, party_name: String, difficulty: String) -> void:
+    if not countries.has(country_id):
+        return
+    player_country_id = country_id
+    selected_country_id = country_id
+    player_leader_name = leader_name
+    player_party = party_name
+    game_difficulty = difficulty
+    day = 15
+    month = 9
+    year = 2026
+    last_event = {}
+    country_selected.emit(country_id)
+    simulation_changed.emit()
 
 func select_country(id: String) -> void:
     if not countries.has(id):
@@ -139,7 +157,8 @@ func impose_sanctions(target: String) -> void:
     countries[target]["sanctioned"] = true
     set_relation(player_country_id, target, relation_between(player_country_id, target) - 20)
     global_tension = clampf(global_tension + 4.0, 0.0, 100.0)
-    _make_event("Diplomacia", "Brasil impõe sanções a %s" % countries[target]["name"])
+    var player_name: String = str(player_country().get("name", "Governo"))
+    _make_event("Diplomacia", "%s impõe sanções a %s" % [player_name, countries[target]["name"]])
 
 func adjust_economy(kind: String, delta: float) -> void:
     match kind:
