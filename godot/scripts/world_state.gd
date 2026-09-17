@@ -4,19 +4,19 @@ signal country_selected(country_id: String)
 signal simulation_changed
 signal event_created(event: Dictionary)
 
-var day := 15
-var month := 9
-var year := 2026
-var selected_country_id := "BRA"
-var player_country_id := "BRA"
+var day: int = 15
+var month: int = 9
+var year: int = 2026
+var selected_country_id: String = "BRA"
+var player_country_id: String = "BRA"
 var countries: Dictionary = {}
-var treasury := 420.0
-var tax_rate := 28.0
-var interest_rate := 10.5
-var social_spending := 18.0
-var defense_spending := 1.4
-var press_relation := 52.0
-var global_tension := 24.0
+var treasury: float = 420.0
+var tax_rate: float = 28.0
+var interest_rate: float = 10.5
+var social_spending: float = 18.0
+var defense_spending: float = 1.4
+var press_relation: float = 52.0
+var global_tension: float = 24.0
 var last_event: Dictionary = {}
 
 func _ready() -> void:
@@ -56,7 +56,7 @@ func merge_geo_country(id: String, name: String) -> void:
     if countries.has(id):
         countries[id]["name"] = name
         return
-    var seed := abs(name.hash())
+    var seed: int = absi(name.hash())
     countries[id] = {
         "id": id,
         "name": name,
@@ -81,10 +81,10 @@ func select_country(id: String) -> void:
     country_selected.emit(id)
 
 func selected_country() -> Dictionary:
-    return countries.get(selected_country_id, {})
+    return countries.get(selected_country_id, {}) as Dictionary
 
 func player_country() -> Dictionary:
-    return countries.get(player_country_id, {})
+    return countries.get(player_country_id, {}) as Dictionary
 
 func advance_days(amount: int) -> void:
     day += amount
@@ -99,37 +99,38 @@ func advance_days(amount: int) -> void:
     simulation_changed.emit()
 
 func _tick_economy(days_elapsed: float) -> void:
-    for id in countries.keys():
-        var c: Dictionary = countries[id]
-        var pressure := (float(c["inflation"]) - 4.0) * 0.002 * days_elapsed
-        c["approval"] = clamp(float(c["approval"]) - pressure, 0.0, 100.0)
-        c["stability"] = clamp(float(c["stability"]) - max(0.0, pressure * 0.45), 0.0, 100.0)
+    for id: Variant in countries.keys():
+        var c: Dictionary = countries[id] as Dictionary
+        var pressure: float = (float(c["inflation"]) - 4.0) * 0.002 * days_elapsed
+        c["approval"] = clampf(float(c["approval"]) - pressure, 0.0, 100.0)
+        c["stability"] = clampf(float(c["stability"]) - maxf(0.0, pressure * 0.45), 0.0, 100.0)
         countries[id] = c
-    var player := player_country()
-    var fiscal_flow := (tax_rate - social_spending - defense_spending * 2.0) * 0.02 * days_elapsed
+    var player: Dictionary = player_country()
+    var fiscal_flow: float = (tax_rate - social_spending - defense_spending * 2.0) * 0.02 * days_elapsed
     treasury += fiscal_flow
-    player["inflation"] = clamp(float(player["inflation"]) + (social_spending - tax_rate * 0.35) * 0.0007 * days_elapsed - interest_rate * 0.00025 * days_elapsed, 0.1, 80.0)
-    player["unemployment"] = clamp(float(player["unemployment"]) + (interest_rate - 8.0) * 0.0005 * days_elapsed, 1.0, 40.0)
+    player["inflation"] = clampf(float(player["inflation"]) + (social_spending - tax_rate * 0.35) * 0.0007 * days_elapsed - interest_rate * 0.00025 * days_elapsed, 0.1, 80.0)
+    player["unemployment"] = clampf(float(player["unemployment"]) + (interest_rate - 8.0) * 0.0005 * days_elapsed, 1.0, 40.0)
     countries[player_country_id] = player
 
 func set_relation(a: String, b: String, value: int) -> void:
     if not countries.has(a) or not countries.has(b):
         return
-    countries[a]["relations"][b] = clamp(value, -100, 100)
-    countries[b]["relations"][a] = clamp(value, -100, 100)
+    countries[a]["relations"][b] = clampi(value, -100, 100)
+    countries[b]["relations"][a] = clampi(value, -100, 100)
     simulation_changed.emit()
 
 func relation_between(a: String, b: String) -> int:
     if not countries.has(a):
         return 0
-    return int(countries[a]["relations"].get(b, 0))
+    var relations: Dictionary = countries[a]["relations"] as Dictionary
+    return int(relations.get(b, 0))
 
 func negotiate_with(target: String) -> void:
     if target == player_country_id or not countries.has(target):
         return
-    var current := relation_between(player_country_id, target)
+    var current: int = relation_between(player_country_id, target)
     set_relation(player_country_id, target, current + 5)
-    press_relation = clamp(press_relation + 0.4, 0.0, 100.0)
+    press_relation = clampf(press_relation + 0.4, 0.0, 100.0)
     _make_event("Diplomacia", "Negociação avança com %s" % countries[target]["name"])
 
 func impose_sanctions(target: String) -> void:
@@ -137,38 +138,38 @@ func impose_sanctions(target: String) -> void:
         return
     countries[target]["sanctioned"] = true
     set_relation(player_country_id, target, relation_between(player_country_id, target) - 20)
-    global_tension = clamp(global_tension + 4.0, 0.0, 100.0)
+    global_tension = clampf(global_tension + 4.0, 0.0, 100.0)
     _make_event("Diplomacia", "Brasil impõe sanções a %s" % countries[target]["name"])
 
 func adjust_economy(kind: String, delta: float) -> void:
     match kind:
-        "tax": tax_rate = clamp(tax_rate + delta, 5.0, 60.0)
-        "interest": interest_rate = clamp(interest_rate + delta, 0.0, 40.0)
-        "social": social_spending = clamp(social_spending + delta, 1.0, 40.0)
-        "defense": defense_spending = clamp(defense_spending + delta, 0.2, 10.0)
+        "tax": tax_rate = clampf(tax_rate + delta, 5.0, 60.0)
+        "interest": interest_rate = clampf(interest_rate + delta, 0.0, 40.0)
+        "social": social_spending = clampf(social_spending + delta, 1.0, 40.0)
+        "defense": defense_spending = clampf(defense_spending + delta, 0.2, 10.0)
     simulation_changed.emit()
 
 func political_action(kind: String) -> void:
-    var c := player_country()
+    var c: Dictionary = player_country()
     match kind:
         "speech":
-            c["approval"] = clamp(float(c["approval"]) + 0.8, 0.0, 100.0)
-            press_relation = clamp(press_relation + 0.6, 0.0, 100.0)
+            c["approval"] = clampf(float(c["approval"]) + 0.8, 0.0, 100.0)
+            press_relation = clampf(press_relation + 0.6, 0.0, 100.0)
         "reform":
-            c["stability"] = clamp(float(c["stability"]) + 1.0, 0.0, 100.0)
-            c["approval"] = clamp(float(c["approval"]) - 0.3, 0.0, 100.0)
+            c["stability"] = clampf(float(c["stability"]) + 1.0, 0.0, 100.0)
+            c["approval"] = clampf(float(c["approval"]) - 0.3, 0.0, 100.0)
     countries[player_country_id] = c
     simulation_changed.emit()
 
 func military_action(kind: String) -> void:
-    var c := player_country()
+    var c: Dictionary = player_country()
     match kind:
         "exercise":
-            c["military_power"] = min(100, int(c["military_power"]) + 1)
+            c["military_power"] = mini(100, int(c["military_power"]) + 1)
             treasury -= 1.2
         "mobilize":
-            c["military_power"] = min(100, int(c["military_power"]) + 2)
-            global_tension = clamp(global_tension + 2.5, 0.0, 100.0)
+            c["military_power"] = mini(100, int(c["military_power"]) + 2)
+            global_tension = clampf(global_tension + 2.5, 0.0, 100.0)
             treasury -= 2.5
     countries[player_country_id] = c
     simulation_changed.emit()
@@ -176,7 +177,7 @@ func military_action(kind: String) -> void:
 func _maybe_event(days_elapsed: int) -> void:
     if days_elapsed < 7:
         return
-    var c := player_country()
+    var c: Dictionary = player_country()
     if float(c["inflation"]) > 8.0:
         _make_event("Economia", "Inflação pressiona consumo e popularidade")
     elif global_tension > 55.0:
