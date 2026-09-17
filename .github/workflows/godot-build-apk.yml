@@ -36,6 +36,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install map preparation dependency
+        run: python -m pip install --disable-pip-version-check pillow
+
       - name: Prepare Natural Earth map
         run: python godot/tools/prepare_data.py
 
@@ -110,7 +113,7 @@ jobs:
       - name: Upload Godot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Presidente-Simulator-Godot-APK
+          name: Presidente-Simulator-Godot-APK-v0.2
           path: godot-build/PresidenteSim-Godot.apk
           if-no-files-found: error
           retention-days: 14
