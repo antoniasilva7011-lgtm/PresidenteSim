@@ -1,0 +1,35 @@
+name: Validate Godot Project
+
+on:
+  push:
+    paths:
+      - 'godot/**'
+      - '.github/workflows/godot-check.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare Natural Earth world map
+        run: python godot/tools/prepare_data.py
+
+      - name: Download Godot 4.4.1
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+          unzip -q Godot_v4.4.1-stable_linux.x86_64.zip
+          mv Godot_v4.4.1-stable_linux.x86_64 godot-bin
+          chmod +x godot-bin
+
+      - name: Import project and validate scripts
+        run: |
+          ./godot-bin --headless --path godot --editor --quit-after 3
+          ./godot-bin --headless --path godot --quit-after 3
