@@ -8,17 +8,18 @@ var country_code: Label
 var country_name: Label
 var country_stats: Label
 var relation_label: Label
-var nav_buttons: Dictionary = {}
 var action_box: HBoxContainer
 var context_title: Label
 var mode_label: Label
+var mode_buttons: Dictionary = {}
+var active_map_mode: String = "political"
 
 func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
     offset_left = 76
     offset_right = -76
-    offset_top = -108
+    offset_top = -106
     offset_bottom = -10
     _build_hud()
     WorldState.country_selected.connect(_on_country_selected)
@@ -27,10 +28,10 @@ func _ready() -> void:
 
 func set_map_view(value: Control) -> void:
     map_view = value
+    _apply_map_mode()
 
 func set_active_section(section: String) -> void:
     active_section = section
-    _update_nav_state()
     _rebuild_actions()
 
 func _build_hud() -> void:
@@ -39,12 +40,12 @@ func _build_hud() -> void:
     row.add_theme_constant_override("separation", 8)
     add_child(row)
     row.add_child(_build_country_card())
-    row.add_child(_build_navigation())
+    row.add_child(_build_map_controls())
     row.add_child(_build_context_actions())
 
 func _build_country_card() -> Control:
     var panel := PanelContainer.new()
-    panel.custom_minimum_size = Vector2(360, 0)
+    panel.custom_minimum_size = Vector2(390, 0)
     panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.050, 0.068, 0.97), Color(0.21, 0.63, 0.72, 0.58), 9))
     var root := HBoxContainer.new()
     root.add_theme_constant_override("separation", 10)
@@ -77,7 +78,7 @@ func _build_country_card() -> Control:
     root.add_child(text)
     return panel
 
-func _build_navigation() -> Control:
+func _build_map_controls() -> Control:
     var panel := PanelContainer.new()
     panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     panel.add_theme_stylebox_override("panel", _panel_style(Color(0.010, 0.024, 0.038, 0.965), Color(0.13, 0.25, 0.31, 0.64), 9))
@@ -88,7 +89,7 @@ func _build_navigation() -> Control:
     var head := HBoxContainer.new()
     root.add_child(head)
     var title := Label.new()
-    title.text = "CENTRAL DE COMANDO"
+    title.text = "CAMADAS DO MAPA"
     title.add_theme_font_size_override("font_size", 10)
     title.modulate = Color(0.46, 0.67, 0.73)
     head.add_child(title)
@@ -96,6 +97,7 @@ func _build_navigation() -> Control:
     spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     head.add_child(spacer)
     mode_label = Label.new()
+    mode_label.text = "POLÍTICO"
     mode_label.add_theme_font_size_override("font_size", 10)
     mode_label.modulate = Color(0.35, 0.84, 0.90)
     head.add_child(mode_label)
@@ -105,24 +107,25 @@ func _build_navigation() -> Control:
     nav.add_theme_constant_override("separation", 4)
     root.add_child(nav)
     var items := [
-        ["GAB", "cabinet"], ["ECO", "economy"], ["POL", "government"],
-        ["MIL", "military"], ["DIP", "diplomacy"], ["MÍDIA", "media"], ["MAPA", "map"]
+        ["POLÍTICO", "political"], ["ECONÔMICO", "economic"],
+        ["MILITAR", "military"], ["DIPLOMÁTICO", "diplomatic"],
+        ["CONFLITOS", "conflict"]
     ]
     for item in items:
         var button := Button.new()
         button.text = item[0]
         button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        button.custom_minimum_size = Vector2(72, 48)
+        button.custom_minimum_size = Vector2(100, 48)
         button.focus_mode = Control.FOCUS_NONE
-        button.pressed.connect(_on_nav_pressed.bind(item[1]))
+        button.pressed.connect(_set_map_mode.bind(item[1]))
         nav.add_child(button)
-        nav_buttons[item[1]] = button
-    _update_nav_state()
+        mode_buttons[item[1]] = button
+    _update_mode_state()
     return panel
 
 func _build_context_actions() -> Control:
     var panel := PanelContainer.new()
-    panel.custom_minimum_size = Vector2(390, 0)
+    panel.custom_minimum_size = Vector2(410, 0)
     panel.add_theme_stylebox_override("panel", _panel_style(Color(0.020, 0.040, 0.056, 0.97), Color(0.25, 0.39, 0.46, 0.55), 9))
     var root := VBoxContainer.new()
     root.add_theme_constant_override("separation", 3)
@@ -138,9 +141,25 @@ func _build_context_actions() -> Control:
     _rebuild_actions()
     return panel
 
-func _on_nav_pressed(section: String) -> void:
-    set_active_section(section)
-    section_requested.emit(section)
+func _set_map_mode(mode: String) -> void:
+    active_map_mode = mode
+    _update_mode_state()
+    _apply_map_mode()
+
+func _apply_map_mode() -> void:
+    if map_view != null and map_view.has_method("set_map_mode"):
+        map_view.call("set_map_mode", active_map_mode)
+
+func _update_mode_state() -> void:
+    if mode_label != null:
+        mode_label.text = active_map_mode.to_upper()
+    for key in mode_buttons.keys():
+        var button: Button = mode_buttons[key] as Button
+        var active := str(key) == active_map_mode
+        button.add_theme_stylebox_override("normal", _button_style(active))
+        button.add_theme_stylebox_override("hover", _button_style(true))
+        button.add_theme_stylebox_override("pressed", _button_style(true))
+        button.add_theme_color_override("font_color", Color(0.76, 0.97, 1.0) if active else Color(0.70, 0.77, 0.81))
 
 func _refresh() -> void:
     if country_name == null:
@@ -157,43 +176,30 @@ func _refresh() -> void:
     if id == WorldState.player_country_id:
         relation_label.text = "SEU GOVERNO  •  %s" % WorldState.player_party.to_upper()
     else:
-        relation_label.text = "RELAÇÃO %+d  •  ALVO SELECIONADO" % relation
+        relation_label.text = "RELAÇÃO %+d  •  PAÍS SELECIONADO" % relation
     _rebuild_actions()
 
 func _on_country_selected(_id: String) -> void:
     _refresh()
-
-func _update_nav_state() -> void:
-    if mode_label != null:
-        mode_label.text = _context_name(active_section).replace(" • AÇÕES RÁPIDAS", "").replace(" • ACESSOS", "")
-    for key in nav_buttons.keys():
-        var button: Button = nav_buttons[key] as Button
-        var active: bool = str(key) == active_section
-        button.add_theme_stylebox_override("normal", _button_style(active))
-        button.add_theme_stylebox_override("hover", _button_style(true))
-        button.add_theme_stylebox_override("pressed", _button_style(true))
-        button.add_theme_color_override("font_color", Color(0.76, 0.97, 1.0) if active else Color(0.70, 0.77, 0.81))
 
 func _rebuild_actions() -> void:
     if action_box == null:
         return
     for child in action_box.get_children():
         child.queue_free()
-    context_title.text = _context_name(active_section)
-    var actions: Array = []
-    match active_section:
-        "map": actions = [["CENTRALIZAR", "center"], ["PAÍS", "open_country"], ["DIP", "diplomacy"]]
-        "diplomacy": actions = [["NEGOCIAR", "negotiate"], ["SANÇÕES", "sanctions"], ["PAÍS", "open_country"]]
-        "military": actions = [["EXERCÍCIO", "exercise"], ["MOBILIZAR", "mobilize"], ["DEFESA +", "defense_up"]]
-        "economy": actions = [["IMPOSTO -", "tax_down"], ["JUROS -", "interest_down"], ["SOCIAL +", "social_up"]]
-        "government": actions = [["DISCURSO", "speech"], ["REFORMA", "reform"], ["+7 DIAS", "days7"]]
-        "media": actions = [["COLETIVA", "speech"], ["+30 DIAS", "days30"], ["PAÍS", "open_country"]]
-        "cabinet": actions = [["MAPA", "map"], ["POLÍTICA", "government"], ["DIP", "diplomacy"]]
+    var target := WorldState.selected_country_id
+    var own_country := target == WorldState.player_country_id
+    context_title.text = "AÇÕES DO PAÍS" if not own_country else "CONTROLES DO MAPA"
+    var actions: Array
+    if own_country:
+        actions = [["CENTRALIZAR", "center"], ["ZOOM +", "zoom_in"], ["ZOOM -", "zoom_out"]]
+    else:
+        actions = [["DOSSIÊ", "open_country"], ["NEGOCIAR", "negotiate"], ["SANÇÕES", "sanctions"]]
     for item in actions:
         var b := Button.new()
         b.text = item[0]
         b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        b.custom_minimum_size = Vector2(104, 48)
+        b.custom_minimum_size = Vector2(108, 48)
         b.focus_mode = Control.FOCUS_NONE
         b.add_theme_stylebox_override("normal", _button_style(false))
         b.add_theme_stylebox_override("hover", _button_style(true))
@@ -202,43 +208,25 @@ func _rebuild_actions() -> void:
         action_box.add_child(b)
 
 func _execute_action(action: String) -> void:
-    var target: String = WorldState.selected_country_id
+    var target := WorldState.selected_country_id
     match action:
         "center":
             if map_view != null and map_view.has_method("reset_view"):
                 map_view.call("reset_view")
+        "zoom_in":
+            if map_view != null and map_view.has_method("zoom_by"):
+                map_view.call("zoom_by", 1.35)
+        "zoom_out":
+            if map_view != null and map_view.has_method("zoom_by"):
+                map_view.call("zoom_by", 1.0 / 1.35)
         "open_country":
-            set_active_section("diplomacy")
             section_requested.emit("diplomacy")
-        "diplomacy", "government", "map":
-            set_active_section(action)
-            section_requested.emit(action)
         "negotiate":
             if target != WorldState.player_country_id:
                 WorldState.negotiate_with(target)
         "sanctions":
             if target != WorldState.player_country_id:
                 WorldState.impose_sanctions(target)
-        "exercise": WorldState.military_action("exercise")
-        "mobilize": WorldState.military_action("mobilize")
-        "defense_up": WorldState.adjust_economy("defense", 0.2)
-        "tax_down": WorldState.adjust_economy("tax", -1.0)
-        "interest_down": WorldState.adjust_economy("interest", -0.5)
-        "social_up": WorldState.adjust_economy("social", 1.0)
-        "speech": WorldState.political_action("speech")
-        "reform": WorldState.political_action("reform")
-        "days7": WorldState.advance_days(7)
-        "days30": WorldState.advance_days(30)
-
-func _context_name(section: String) -> String:
-    match section:
-        "economy": return "ECONOMIA • AÇÕES RÁPIDAS"
-        "government": return "POLÍTICA • AÇÕES RÁPIDAS"
-        "military": return "MILITAR • AÇÕES RÁPIDAS"
-        "diplomacy": return "DIPLOMACIA • AÇÕES RÁPIDAS"
-        "media": return "MÍDIA • AÇÕES RÁPIDAS"
-        "cabinet": return "GABINETE • ACESSOS"
-        _: return "MAPA • CONTEXTO"
 
 func _short_code(id: String) -> String:
     if id.length() <= 3:
