@@ -14,6 +14,7 @@ var player_party: String = "Independente"
 var game_difficulty: String = "Normal"
 var campaign_promise: String = "Estabilidade econômica"
 var countries: Dictionary = {}
+var bilateral_facts: Dictionary = {}
 var treasury: float = 420.0
 var tax_rate: float = 28.0
 var interest_rate: float = 10.5
@@ -26,17 +27,36 @@ var cabinet: Array[Dictionary] = []
 
 func _ready() -> void:
     _ensure_default_world()
+    _ensure_bilateral_facts()
     _ensure_cabinet()
 
 func _ensure_default_world() -> void:
     if not countries.is_empty():
         return
-    _add_country("BRA", "Brasil", 215000000, 2.10, 4.8, 7.2, 78.4, 72)
-    _add_country("USA", "Estados Unidos", 347000000, 29.18, 2.9, 4.3, 121.0, 96)
-    _add_country("CHN", "China", 1410000000, 18.70, 1.1, 5.1, 88.0, 94)
-    _add_country("RUS", "Rússia", 144000000, 2.20, 6.8, 2.4, 20.0, 91)
-    _add_country("IND", "Índia", 1460000000, 4.30, 4.1, 7.0, 82.0, 86)
-    _add_country("ARG", "Argentina", 46000000, 0.64, 18.0, 7.5, 84.0, 55)
+    _add_country("BRA", "Brasil", 215000000, 2.30, 4.8, 6.0, 78.4, 72, 23.9, 2025)
+    _add_country("USA", "Estados Unidos", 347000000, 30.77, 2.9, 4.2, 121.0, 96, 954.0, 2025)
+    _add_country("CHN", "China", 1410000000, 19.50, 0.1, 4.6, 88.0, 94, 336.0, 2025)
+    _add_country("RUS", "Rússia", 144000000, 2.20, 6.8, 2.4, 20.0, 91, 190.0, 2025)
+    _add_country("IND", "Índia", 1460000000, 4.30, 4.1, 7.0, 82.0, 86, 92.1, 2025)
+    _add_country("ARG", "Argentina", 46000000, 0.64, 18.0, 7.5, 84.0, 55, -1.0, 2025)
+
+func _ensure_bilateral_facts() -> void:
+    if not bilateral_facts.is_empty():
+        return
+    bilateral_facts[_pair_key("BRA", "CHN")] = {
+        "trade_usd_b": 128.63,
+        "trade_period": "jan-ago/2026",
+        "dialogue": "",
+        "sanctions": false,
+        "source": "MDIC/Comex Stat"
+    }
+    bilateral_facts[_pair_key("BRA", "USA")] = {
+        "trade_usd_b": 51.42,
+        "trade_period": "jan-ago/2026",
+        "dialogue": "Diálogo comercial ativo",
+        "sanctions": false,
+        "source": "MDIC/MRE"
+    }
 
 func _ensure_cabinet() -> void:
     if not cabinet.is_empty():
@@ -49,7 +69,7 @@ func _ensure_cabinet() -> void:
         {"office":"Comunicação","name":"Lívia Rocha","competence":76,"loyalty":69,"risk":28}
     ]
 
-func _add_country(id: String, name: String, population: int, gdp_t: float, inflation: float, unemployment: float, debt: float, power: int) -> void:
+func _add_country(id: String, name: String, population: int, gdp_t: float, inflation: float, unemployment: float, debt: float, power: int, military_spending_usd_b: float = -1.0, data_year: int = 2025) -> void:
     countries[id] = {
         "id": id,
         "name": name,
@@ -59,6 +79,8 @@ func _add_country(id: String, name: String, population: int, gdp_t: float, infla
         "unemployment": unemployment,
         "debt_gdp": debt,
         "military_power": power,
+        "military_spending_usd_b": military_spending_usd_b,
+        "data_year": data_year,
         "stability": 68.0,
         "approval": 57.0,
         "relations": {},
@@ -66,6 +88,31 @@ func _add_country(id: String, name: String, population: int, gdp_t: float, infla
         "sanctioned": false,
         "war": false
     }
+
+func _pair_key(a: String, b: String) -> String:
+    var parts := [a, b]
+    parts.sort()
+    return "%s|%s" % [parts[0], parts[1]]
+
+func bilateral_fact(a: String, b: String) -> Dictionary:
+    return bilateral_facts.get(_pair_key(a, b), {}) as Dictionary
+
+func bilateral_summary(a: String, b: String) -> String:
+    if a == b:
+        return "PAÍS DO JOGADOR"
+    var fact := bilateral_fact(a, b)
+    if fact.is_empty():
+        return "SEM BASE BILATERAL ATUAL"
+    var parts: Array[String] = []
+    var trade := float(fact.get("trade_usd_b", -1.0))
+    if trade >= 0.0:
+        parts.append("COMÉRCIO US$ %.2f bi (%s)" % [trade, str(fact.get("trade_period", ""))])
+    var dialogue := str(fact.get("dialogue", ""))
+    if not dialogue.is_empty():
+        parts.append(dialogue.to_upper())
+    if bool(fact.get("sanctions", false)):
+        parts.append("SANÇÕES ATIVAS")
+    return " • ".join(parts)
 
 func merge_geo_country(id: String, name: String) -> void:
     if id.is_empty() or id == "-99":
@@ -83,6 +130,8 @@ func merge_geo_country(id: String, name: String) -> void:
         "unemployment": 2.0 + float(seed % 130) / 10.0,
         "debt_gdp": 20.0 + float(seed % 1200) / 10.0,
         "military_power": 15 + seed % 81,
+        "military_spending_usd_b": -1.0,
+        "data_year": 0,
         "stability": 45.0 + float(seed % 500) / 10.0,
         "approval": 40.0 + float(seed % 350) / 10.0,
         "relations": {},
