@@ -14,13 +14,25 @@ DATA = ROOT / "data"
 DATA.mkdir(parents=True, exist_ok=True)
 
 GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson"
-RASTER_URL = "https://www.naturalearthdata.com/download/50m/raster/NE2_50M_SR.zip"
+RASTER_URL = "https://naturalearth.s3.amazonaws.com/50m_raster/NE2_50M_SR.zip"
 GEOJSON_OUT = DATA / "world.geojson"
 TEXTURE_OUT = DATA / "world_texture.jpg"
 
+
+def download(url: str, timeout: int) -> bytes:
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "PresidenteSim-GitHubActions/0.2 (+https://github.com/antoniasilva7011-lgtm/PresidenteSim)",
+            "Accept": "*/*",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read()
+
+
 print(f"Downloading Natural Earth world countries -> {GEOJSON_OUT}")
-with urllib.request.urlopen(GEOJSON_URL, timeout=60) as response:
-    payload = response.read()
+payload = download(GEOJSON_URL, 60)
 
 parsed = json.loads(payload.decode("utf-8"))
 if parsed.get("type") != "FeatureCollection" or not parsed.get("features"):
@@ -43,8 +55,7 @@ GEOJSON_OUT.write_text(
 print(f"Prepared {len(parsed['features'])} map features ({GEOJSON_OUT.stat().st_size / 1024:.1f} KiB)")
 
 print(f"Downloading Natural Earth II shaded relief -> {TEXTURE_OUT}")
-with urllib.request.urlopen(RASTER_URL, timeout=180) as response:
-    raster_zip = response.read()
+raster_zip = download(RASTER_URL, 180)
 
 with zipfile.ZipFile(io.BytesIO(raster_zip)) as archive:
     tif_names = [name for name in archive.namelist() if name.lower().endswith((".tif", ".tiff"))]
