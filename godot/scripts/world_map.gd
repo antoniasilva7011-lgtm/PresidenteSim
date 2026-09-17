@@ -3,6 +3,9 @@ extends Control
 signal country_clicked(country_id: String)
 
 const GEOJSON_PATH: String = "res://data/world.geojson"
+const MIN_ZOOM: float = 1.0
+const MAX_ZOOM: float = 8.0
+
 var features: Array = []
 var labels: Array = []
 var zoom: float = 1.0
@@ -12,6 +15,8 @@ var _touch_start: Dictionary = {}
 var _moved: Dictionary = {}
 var _last_mouse: Vector2 = Vector2.ZERO
 var _mouse_dragging: bool = false
+var _mouse_moved: bool = false
+var _mouse_start: Vector2 = Vector2.ZERO
 var _pinch_start_distance: float = 0.0
 var _pinch_start_zoom: float = 1.0
 var selected_id: String = "BRA"
@@ -20,7 +25,11 @@ func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     _load_geojson()
     WorldState.country_selected.connect(_on_country_selected)
-    resized.connect(queue_redraw)
+    resized.connect(_on_resized)
+    queue_redraw()
+
+func _on_resized() -> void:
+    _clamp_pan()
     queue_redraw()
 
 func _load_geojson() -> void:
@@ -48,19 +57,38 @@ func _load_geojson() -> void:
         var coords: Variant = geom.get("coordinates", [])
         var gtype: String = str(geom.get("type", ""))
         var center_geo: Vector2 = _feature_geo_center(coords, gtype)
-        labels.append({"id": iso, "name": name, "geo": center_geo, "area_hint": _feature_area_hint(coords, gtype)})
+        labels.append({
+            "id": iso,
+            "name": name,
+            "geo": center_geo,
+            "area_hint": _feature_area_hint(coords, gtype)
+        })
 
 func reset_view() -> void:
-    zoom = 1.0
+    zoom = MIN_ZOOM
     pan = Vector2.ZERO
     queue_redraw()
 
 func zoom_by(factor: float, focus: Vector2 = Vector2.ZERO) -> void:
-    var old: float = zoom
-    zoom = clampf(zoom * factor, 1.0, 8.0)
-    if focus != Vector2.ZERO:
-        pan = focus - (focus - pan) * (zoom / maxf(old, 0.001))
-    queue_redraw()
+    var old_zoom: float = zoom
+    zoom = clampf(zoom * factor, MIN_ZOOM, MAX_ZOOM)
+    if focus == Vector2.ZERO:
+        focus = size * 0.5
+    if not is_equal_approx(old_zoom, zoom):
+        pan = focus - (focus - pan) * (zoom / maxf(old_zoom, 0.001))
+        _clamp_pan()
+        queue_redraw()
+
+func _clamp_pan() -> void:
+    if size.x <= 0.0 or size.y <= 0.0:
+        return
+    if zoom <= MIN_ZOOM + 0.001:
+        pan = Vector2.ZERO
+        return
+    var world_size: Vector2 = size * zoom
+    var min_pan: Vector2 = size - world_size
+    pan.x = clampf(pan.x, min_pan.x, 0.0)
+    pan.y = clampf(pan.y, min_pan.y, 0.0)
 
 func _gui_input(event: InputEvent) -> void:
     if event is InputEventScreenTouch:
@@ -76,15 +104,23 @@ func _gui_input(event: InputEvent) -> void:
         elif mouse_button.button_index == MOUSE_BUTTON_WHEEL_DOWN and mouse_button.pressed:
             zoom_by(1.0 / 1.18, mouse_button.position)
         elif mouse_button.button_index == MOUSE_BUTTON_LEFT:
-            _mouse_dragging = mouse_button.pressed
-            _last_mouse = mouse_button.position
-            if not mouse_button.pressed:
-                _select_at(mouse_button.position)
+            if mouse_button.pressed:
+                _mouse_dragging = true
+                _mouse_moved = false
+                _mouse_start = mouse_button.position
+                _last_mouse = mouse_button.position
+            else:
+                _mouse_dragging = false
+                if not _mouse_moved:
+                    _select_at(mouse_button.position)
         accept_event()
     elif event is InputEventMouseMotion and _mouse_dragging:
         var mouse_motion: InputEventMouseMotion = event as InputEventMouseMotion
+        if mouse_motion.position.distance_to(_mouse_start) > 8.0:
+            _mouse_moved = true
         pan += mouse_motion.position - _last_mouse
         _last_mouse = mouse_motion.position
+        _clamp_pan()
         queue_redraw()
         accept_event()
 
@@ -110,6 +146,7 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
             _select_at(event.position)
         if _touches.size() < 2:
             _pinch_start_distance = 0.0
+        _clamp_pan()
 
 func _handle_drag(event: InputEventScreenDrag) -> void:
     _touches[event.index] = event.position
@@ -118,6 +155,7 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
         _moved[event.index] = true
     if _touches.size() == 1:
         pan += event.relative
+        _clamp_pan()
         queue_redraw()
     elif _touches.size() >= 2:
         var pts: Array = _touches.values()
@@ -128,19 +166,25 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
             _pinch_start_distance = distance
             _pinch_start_zoom = zoom
         var center: Vector2 = (p0 + p1) * 0.5
-        var old: float = zoom
-        zoom = clampf(_pinch_start_zoom * distance / maxf(1.0, _pinch_start_distance), 1.0, 8.0)
-        pan = center - (center - pan) * (zoom / maxf(0.001, old))
+        var old_zoom: float = zoom
+        zoom = clampf(_pinch_start_zoom * distance / maxf(1.0, _pinch_start_distance), MIN_ZOOM, MAX_ZOOM)
+        if not is_equal_approx(old_zoom, zoom):
+            pan = center - (center - pan) * (zoom / maxf(0.001, old_zoom))
+        _clamp_pan()
         queue_redraw()
 
 func _project(coord: Array) -> Vector2:
     var lon: float = float(coord[0])
     var lat: float = float(coord[1])
-    var base: Vector2 = Vector2((lon + 180.0) / 360.0 * size.x, (90.0 - lat) / 180.0 * size.y)
+    var base: Vector2 = Vector2(
+        (lon + 180.0) / 360.0 * size.x,
+        (90.0 - lat) / 180.0 * size.y
+    )
     return base * zoom + pan
 
 func _draw() -> void:
-    draw_rect(Rect2(Vector2.ZERO, size), Color("07131d"))
+    _draw_ocean_background()
+    _draw_geo_grid()
     if features.is_empty():
         _draw_missing_data()
         return
@@ -152,63 +196,122 @@ func _draw() -> void:
         var coords: Variant = geom.get("coordinates", [])
         var fill: Color = _country_color(id)
         if gtype == "Polygon":
-            _draw_polygon_group(coords as Array, fill)
+            _draw_polygon_group(coords as Array, fill, id == selected_id)
         elif gtype == "MultiPolygon":
             for poly_variant: Variant in coords as Array:
-                _draw_polygon_group(poly_variant as Array, fill)
+                _draw_polygon_group(poly_variant as Array, fill, id == selected_id)
     _draw_labels()
 
-func _draw_polygon_group(rings: Array, fill: Color) -> void:
+func _draw_ocean_background() -> void:
+    var bands: int = 18
+    for i: int in range(bands):
+        var t: float = float(i) / float(maxi(1, bands - 1))
+        var y: float = size.y * float(i) / float(bands)
+        var h: float = size.y / float(bands) + 1.0
+        var top: Color = Color(0.018, 0.085, 0.125, 1.0)
+        var bottom: Color = Color(0.012, 0.045, 0.075, 1.0)
+        var c: Color = top.lerp(bottom, t)
+        draw_rect(Rect2(0.0, y, size.x, h), c)
+    draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.16, 0.22, 0.16))
+
+func _draw_geo_grid() -> void:
+    var grid_color: Color = Color(0.42, 0.72, 0.82, 0.075)
+    for lon: int in range(-150, 180, 30):
+        var a: Vector2 = _project([float(lon), -90.0])
+        var b: Vector2 = _project([float(lon), 90.0])
+        draw_line(a, b, grid_color, 1.0)
+    for lat: int in range(-60, 90, 30):
+        var a: Vector2 = _project([-180.0, float(lat)])
+        var b: Vector2 = _project([180.0, float(lat)])
+        draw_line(a, b, grid_color, 1.0)
+
+func _draw_polygon_group(rings: Array, fill: Color, selected: bool) -> void:
     if rings.is_empty():
         return
     var outer: PackedVector2Array = PackedVector2Array()
     for c_variant: Variant in rings[0] as Array:
         outer.append(_project(c_variant as Array))
-    if outer.size() >= 3:
-        draw_colored_polygon(outer, fill)
-        draw_polyline(outer, Color(0.15, 0.72, 0.95, 0.34), 1.0, true)
+    if outer.size() < 3:
+        return
+    draw_colored_polygon(outer, fill)
+    if selected:
+        draw_polyline(outer, Color(0.10, 0.85, 1.0, 0.28), 5.0, true)
+        draw_polyline(outer, Color(0.55, 0.96, 1.0, 1.0), 2.0, true)
+    else:
+        draw_polyline(outer, Color(0.38, 0.70, 0.76, 0.48), 1.0, true)
 
 func _draw_labels() -> void:
     var font: Font = get_theme_default_font()
-    for item_variant: Variant in labels:
+    var occupied: Array[Rect2] = []
+    var ordered: Array = labels.duplicate()
+    ordered.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+        return float(a.get("area_hint", 0.0)) > float(b.get("area_hint", 0.0))
+    )
+    for item_variant: Variant in ordered:
         var item: Dictionary = item_variant as Dictionary
         var geo: Vector2 = item["geo"] as Vector2
         if geo == Vector2.INF:
             continue
         var area_hint: float = float(item["area_hint"])
-        var min_zoom: float = 1.0
-        if area_hint < 4.0:
-            min_zoom = 4.0
-        elif area_hint < 12.0:
-            min_zoom = 2.5
-        elif area_hint < 30.0:
-            min_zoom = 1.7
+        var min_zoom: float = _label_min_zoom(area_hint)
         if zoom < min_zoom:
             continue
         var p: Vector2 = _project([geo.x, geo.y])
-        if p.x < -80.0 or p.y < -30.0 or p.x > size.x + 80.0 or p.y > size.y + 30.0:
+        if p.x < -100.0 or p.y < -40.0 or p.x > size.x + 100.0 or p.y > size.y + 40.0:
             continue
         var id: String = str(item["id"])
         var name: String = str(item["name"]).to_upper()
-        var font_size: int = int(clampf(12.0 + zoom * 1.8, 12.0, 22.0))
-        var color: Color = Color(0.95, 0.98, 1.0, 0.88)
-        if id == selected_id:
-            color = Color(0.30, 0.90, 1.0, 1.0)
+        var font_size: int = int(clampf(10.0 + sqrt(zoom) * 2.3, 11.0, 18.0))
+        var selected: bool = id == selected_id
+        if selected:
             font_size += 2
-        var width: float = font.get_string_size(name, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
-        draw_string(font, p - Vector2(width * 0.5, -font_size * 0.35), name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+        var text_size: Vector2 = font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+        var rect: Rect2 = Rect2(p - Vector2(text_size.x * 0.5 + 4.0, text_size.y * 0.5 + 3.0), text_size + Vector2(8.0, 6.0))
+        if not selected and _intersects_any(rect, occupied):
+            continue
+        var color: Color = Color(0.91, 0.96, 0.98, 0.88)
+        if selected:
+            color = Color(0.58, 0.96, 1.0, 1.0)
+            draw_rect(rect, Color(0.02, 0.13, 0.18, 0.62), true)
+        draw_string(font, p - Vector2(text_size.x * 0.5, -font_size * 0.35), name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+        occupied.append(rect)
+
+func _label_min_zoom(area_hint: float) -> float:
+    if area_hint >= 130.0:
+        return 1.0
+    if area_hint >= 50.0:
+        return 1.25
+    if area_hint >= 22.0:
+        return 1.7
+    if area_hint >= 10.0:
+        return 2.4
+    if area_hint >= 4.0:
+        return 3.3
+    return 4.6
+
+func _intersects_any(rect: Rect2, occupied: Array[Rect2]) -> bool:
+    for other: Rect2 in occupied:
+        if rect.intersects(other):
+            return true
+    return false
 
 func _country_color(id: String) -> Color:
     if id == selected_id:
-        return Color(0.08, 0.58, 0.78, 0.95)
+        return Color(0.07, 0.43, 0.52, 0.96)
     var c: Dictionary = WorldState.countries.get(id, {}) as Dictionary
     if bool(c.get("war", false)):
-        return Color(0.55, 0.10, 0.12, 0.96)
+        return Color(0.52, 0.13, 0.12, 0.97)
     if bool(c.get("sanctioned", false)):
-        return Color(0.45, 0.25, 0.08, 0.96)
+        return Color(0.43, 0.27, 0.10, 0.97)
     var stability: float = float(c.get("stability", 55.0))
-    var t: float = clampf(stability / 100.0, 0.0, 1.0)
-    return Color(0.05 + 0.08 * t, 0.16 + 0.22 * t, 0.20 + 0.16 * t, 0.96)
+    var stability_t: float = clampf(stability / 100.0, 0.0, 1.0)
+    var hash_value: int = abs(id.hash()) % 100
+    var terrain_shift: float = float(hash_value) / 100.0
+    var low: Color = Color(0.16, 0.23, 0.18, 0.96)
+    var high: Color = Color(0.34, 0.38, 0.24, 0.96)
+    var base: Color = low.lerp(high, 0.25 + terrain_shift * 0.55)
+    var cool: Color = Color(0.12, 0.28, 0.29, 0.96)
+    return base.lerp(cool, (1.0 - stability_t) * 0.22)
 
 func _select_at(pos: Vector2) -> void:
     var best_id: String = ""
@@ -223,7 +326,7 @@ func _select_at(pos: Vector2) -> void:
         if distance_to_country < best_distance:
             best_distance = distance_to_country
             best_id = str(item["id"])
-    var threshold: float = 95.0 + 30.0 * minf(zoom, 3.0)
+    var threshold: float = clampf(72.0 + 12.0 * minf(zoom, 4.0), 72.0, 120.0)
     if not best_id.is_empty() and best_distance < threshold:
         WorldState.select_country(best_id)
         country_clicked.emit(best_id)
@@ -258,9 +361,14 @@ func _feature_area_hint(coords: Variant, gtype: String) -> float:
     if gtype == "Polygon" and coord_array.size() > 0:
         points = coord_array[0] as Array
     elif gtype == "MultiPolygon" and coord_array.size() > 0:
-        var first_poly: Array = coord_array[0] as Array
-        if first_poly.size() > 0:
-            points = first_poly[0] as Array
+        var best_ring: Array = []
+        for poly_variant: Variant in coord_array:
+            var poly: Array = poly_variant as Array
+            if poly.size() > 0:
+                var ring: Array = poly[0] as Array
+                if ring.size() > best_ring.size():
+                    best_ring = ring
+        points = best_ring
     if points.is_empty():
         return 0.0
     var min_lon: float = 999.0
