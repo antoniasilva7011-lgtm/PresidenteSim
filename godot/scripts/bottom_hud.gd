@@ -11,13 +11,14 @@ var relation_label: Label
 var nav_buttons: Dictionary = {}
 var action_box: HBoxContainer
 var context_title: Label
+var mode_label: Label
 
 func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-    offset_left = 78
-    offset_right = -78
-    offset_top = -116
+    offset_left = 76
+    offset_right = -76
+    offset_top = -108
     offset_bottom = -10
     _build_hud()
     WorldState.country_selected.connect(_on_country_selected)
@@ -33,51 +34,43 @@ func set_active_section(section: String) -> void:
     _rebuild_actions()
 
 func _build_hud() -> void:
-    var shell := PanelContainer.new()
-    shell.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    shell.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.035, 0.052, 0.94), Color(0.18, 0.35, 0.43, 0.55), 10))
-    add_child(shell)
-
     var row := HBoxContainer.new()
+    row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     row.add_theme_constant_override("separation", 8)
-    shell.add_child(row)
-
+    add_child(row)
     row.add_child(_build_country_card())
     row.add_child(_build_navigation())
     row.add_child(_build_context_actions())
 
 func _build_country_card() -> Control:
     var panel := PanelContainer.new()
-    panel.custom_minimum_size = Vector2(380, 0)
-    panel.add_theme_stylebox_override("panel", _panel_style(Color(0.028, 0.064, 0.083, 0.96), Color(0.24, 0.66, 0.76, 0.5), 8))
-
+    panel.custom_minimum_size = Vector2(360, 0)
+    panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.050, 0.068, 0.97), Color(0.21, 0.63, 0.72, 0.58), 9))
     var root := HBoxContainer.new()
-    root.add_theme_constant_override("separation", 12)
+    root.add_theme_constant_override("separation", 10)
     panel.add_child(root)
 
     var badge := PanelContainer.new()
-    badge.custom_minimum_size = Vector2(72, 72)
-    badge.add_theme_stylebox_override("panel", _panel_style(Color(0.035, 0.30, 0.38, 1.0), Color(0.45, 0.95, 1.0, 0.8), 7))
+    badge.custom_minimum_size = Vector2(66, 66)
+    badge.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.25, 0.33, 1.0), Color(0.44, 0.94, 1.0, 0.78), 8))
     country_code = Label.new()
     country_code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     country_code.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    country_code.add_theme_font_size_override("font_size", 17)
-    country_code.add_theme_color_override("font_color", Color(0.86, 0.99, 1.0))
+    country_code.add_theme_font_size_override("font_size", 16)
     badge.add_child(country_code)
     root.add_child(badge)
 
     var text := VBoxContainer.new()
     text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    text.add_theme_constant_override("separation", 2)
+    text.add_theme_constant_override("separation", 1)
     country_name = Label.new()
-    country_name.add_theme_font_size_override("font_size", 18)
-    country_name.add_theme_color_override("font_color", Color(0.95, 0.98, 1.0))
+    country_name.add_theme_font_size_override("font_size", 17)
     country_stats = Label.new()
-    country_stats.add_theme_font_size_override("font_size", 12)
-    country_stats.add_theme_color_override("font_color", Color(0.67, 0.78, 0.83))
+    country_stats.add_theme_font_size_override("font_size", 11)
+    country_stats.modulate = Color(0.68, 0.79, 0.84)
     relation_label = Label.new()
-    relation_label.add_theme_font_size_override("font_size", 12)
-    relation_label.add_theme_color_override("font_color", Color(0.39, 0.88, 0.94))
+    relation_label.add_theme_font_size_override("font_size", 11)
+    relation_label.modulate = Color(0.39, 0.88, 0.94)
     text.add_child(country_name)
     text.add_child(country_stats)
     text.add_child(relation_label)
@@ -87,24 +80,30 @@ func _build_country_card() -> Control:
 func _build_navigation() -> Control:
     var panel := PanelContainer.new()
     panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    panel.add_theme_stylebox_override("panel", _panel_style(Color(0.015, 0.027, 0.041, 0.93), Color(0.15, 0.25, 0.31, 0.6), 8))
-
+    panel.add_theme_stylebox_override("panel", _panel_style(Color(0.010, 0.024, 0.038, 0.965), Color(0.13, 0.25, 0.31, 0.64), 9))
     var root := VBoxContainer.new()
-    root.add_theme_constant_override("separation", 4)
+    root.add_theme_constant_override("separation", 3)
     panel.add_child(root)
 
+    var head := HBoxContainer.new()
+    root.add_child(head)
     var title := Label.new()
     title.text = "CENTRAL DE COMANDO"
-    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    title.add_theme_font_size_override("font_size", 11)
-    title.add_theme_color_override("font_color", Color(0.43, 0.63, 0.70))
-    root.add_child(title)
+    title.add_theme_font_size_override("font_size", 10)
+    title.modulate = Color(0.46, 0.67, 0.73)
+    head.add_child(title)
+    var spacer := Control.new()
+    spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    head.add_child(spacer)
+    mode_label = Label.new()
+    mode_label.add_theme_font_size_override("font_size", 10)
+    mode_label.modulate = Color(0.35, 0.84, 0.90)
+    head.add_child(mode_label)
 
     var nav := HBoxContainer.new()
     nav.size_flags_vertical = Control.SIZE_EXPAND_FILL
     nav.add_theme_constant_override("separation", 4)
     root.add_child(nav)
-
     var items := [
         ["GAB", "cabinet"], ["ECO", "economy"], ["POL", "government"],
         ["MIL", "military"], ["DIP", "diplomacy"], ["MÍDIA", "media"], ["MAPA", "map"]
@@ -113,7 +112,7 @@ func _build_navigation() -> Control:
         var button := Button.new()
         button.text = item[0]
         button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        button.custom_minimum_size = Vector2(74, 54)
+        button.custom_minimum_size = Vector2(72, 48)
         button.focus_mode = Control.FOCUS_NONE
         button.pressed.connect(_on_nav_pressed.bind(item[1]))
         nav.add_child(button)
@@ -123,19 +122,15 @@ func _build_navigation() -> Control:
 
 func _build_context_actions() -> Control:
     var panel := PanelContainer.new()
-    panel.custom_minimum_size = Vector2(420, 0)
-    panel.add_theme_stylebox_override("panel", _panel_style(Color(0.028, 0.046, 0.061, 0.96), Color(0.27, 0.39, 0.46, 0.55), 8))
-
+    panel.custom_minimum_size = Vector2(390, 0)
+    panel.add_theme_stylebox_override("panel", _panel_style(Color(0.020, 0.040, 0.056, 0.97), Color(0.25, 0.39, 0.46, 0.55), 9))
     var root := VBoxContainer.new()
-    root.add_theme_constant_override("separation", 4)
+    root.add_theme_constant_override("separation", 3)
     panel.add_child(root)
-
     context_title = Label.new()
-    context_title.text = "AÇÕES RÁPIDAS"
-    context_title.add_theme_font_size_override("font_size", 11)
-    context_title.add_theme_color_override("font_color", Color(0.56, 0.72, 0.78))
+    context_title.add_theme_font_size_override("font_size", 10)
+    context_title.modulate = Color(0.56, 0.72, 0.78)
     root.add_child(context_title)
-
     action_box = HBoxContainer.new()
     action_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
     action_box.add_theme_constant_override("separation", 5)
@@ -158,24 +153,26 @@ func _refresh() -> void:
     var relation: int = WorldState.relation_between(WorldState.player_country_id, id)
     country_code.text = _short_code(id)
     country_name.text = name.to_upper()
-    country_stats.text = "PODER %d/100   •   ESTABILIDADE %.0f%%" % [power, stability]
+    country_stats.text = "PODER %d/100  •  ESTAB. %.0f%%" % [power, stability]
     if id == WorldState.player_country_id:
-        relation_label.text = "SEU GOVERNO   •   %s" % WorldState.player_party.to_upper()
+        relation_label.text = "SEU GOVERNO  •  %s" % WorldState.player_party.to_upper()
     else:
-        relation_label.text = "RELAÇÃO %+d   •   TOQUE EM AÇÕES PARA INTERAGIR" % relation
+        relation_label.text = "RELAÇÃO %+d  •  ALVO SELECIONADO" % relation
     _rebuild_actions()
 
 func _on_country_selected(_id: String) -> void:
     _refresh()
 
 func _update_nav_state() -> void:
+    if mode_label != null:
+        mode_label.text = _context_name(active_section).replace(" • AÇÕES RÁPIDAS", "").replace(" • ACESSOS", "")
     for key in nav_buttons.keys():
         var button: Button = nav_buttons[key] as Button
         var active: bool = str(key) == active_section
         button.add_theme_stylebox_override("normal", _button_style(active))
         button.add_theme_stylebox_override("hover", _button_style(true))
         button.add_theme_stylebox_override("pressed", _button_style(true))
-        button.add_theme_color_override("font_color", Color(0.72, 0.96, 1.0) if active else Color(0.72, 0.78, 0.82))
+        button.add_theme_color_override("font_color", Color(0.76, 0.97, 1.0) if active else Color(0.70, 0.77, 0.81))
 
 func _rebuild_actions() -> void:
     if action_box == null:
@@ -185,25 +182,18 @@ func _rebuild_actions() -> void:
     context_title.text = _context_name(active_section)
     var actions: Array = []
     match active_section:
-        "map":
-            actions = [["CENTRALIZAR", "center"], ["ABRIR PAÍS", "open_country"], ["DIPLOMACIA", "diplomacy"]]
-        "diplomacy":
-            actions = [["NEGOCIAR", "negotiate"], ["SANÇÕES", "sanctions"], ["ABRIR PAÍS", "open_country"]]
-        "military":
-            actions = [["EXERCÍCIO", "exercise"], ["MOBILIZAR", "mobilize"], ["DEFESA +", "defense_up"]]
-        "economy":
-            actions = [["IMPOSTO -", "tax_down"], ["JUROS -", "interest_down"], ["SOCIAL +", "social_up"]]
-        "government":
-            actions = [["DISCURSO", "speech"], ["REFORMA", "reform"], ["+7 DIAS", "days7"]]
-        "media":
-            actions = [["COLETIVA", "speech"], ["+30 DIAS", "days30"], ["PAÍS", "open_country"]]
-        "cabinet":
-            actions = [["MAPA", "map"], ["POLÍTICA", "government"], ["DIPLOMACIA", "diplomacy"]]
+        "map": actions = [["CENTRALIZAR", "center"], ["PAÍS", "open_country"], ["DIP", "diplomacy"]]
+        "diplomacy": actions = [["NEGOCIAR", "negotiate"], ["SANÇÕES", "sanctions"], ["PAÍS", "open_country"]]
+        "military": actions = [["EXERCÍCIO", "exercise"], ["MOBILIZAR", "mobilize"], ["DEFESA +", "defense_up"]]
+        "economy": actions = [["IMPOSTO -", "tax_down"], ["JUROS -", "interest_down"], ["SOCIAL +", "social_up"]]
+        "government": actions = [["DISCURSO", "speech"], ["REFORMA", "reform"], ["+7 DIAS", "days7"]]
+        "media": actions = [["COLETIVA", "speech"], ["+30 DIAS", "days30"], ["PAÍS", "open_country"]]
+        "cabinet": actions = [["MAPA", "map"], ["POLÍTICA", "government"], ["DIP", "diplomacy"]]
     for item in actions:
         var b := Button.new()
         b.text = item[0]
         b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        b.custom_minimum_size = Vector2(110, 54)
+        b.custom_minimum_size = Vector2(104, 48)
         b.focus_mode = Control.FOCUS_NONE
         b.add_theme_stylebox_override("normal", _button_style(false))
         b.add_theme_stylebox_override("hover", _button_style(true))
@@ -271,16 +261,16 @@ func _panel_style(bg: Color, border: Color, radius: int) -> StyleBoxFlat:
     style.corner_radius_top_right = radius
     style.corner_radius_bottom_left = radius
     style.corner_radius_bottom_right = radius
-    style.content_margin_left = 12
-    style.content_margin_right = 12
-    style.content_margin_top = 8
-    style.content_margin_bottom = 8
+    style.content_margin_left = 10
+    style.content_margin_right = 10
+    style.content_margin_top = 7
+    style.content_margin_bottom = 7
     return style
 
 func _button_style(active: bool) -> StyleBoxFlat:
     var style := StyleBoxFlat.new()
-    style.bg_color = Color(0.035, 0.22, 0.28, 0.96) if active else Color(0.025, 0.045, 0.06, 0.94)
-    style.border_color = Color(0.31, 0.82, 0.91, 0.82) if active else Color(0.14, 0.23, 0.28, 0.72)
+    style.bg_color = Color(0.030, 0.21, 0.27, 0.97) if active else Color(0.018, 0.040, 0.055, 0.96)
+    style.border_color = Color(0.32, 0.82, 0.91, 0.84) if active else Color(0.12, 0.22, 0.27, 0.74)
     style.set_border_width_all(1)
     style.corner_radius_top_left = 6
     style.corner_radius_top_right = 6
