@@ -3,11 +3,10 @@ extends Control
 var map_view: Control
 var cabinet_container: SubViewportContainer
 var cabinet_viewport: SubViewport
-var info_panel: PanelContainer
 var section_panel: PanelContainer
+var bottom_hud: Control
 var title_label: Label
 var content_box: VBoxContainer
-var selected_label: Label
 var date_label: Label
 var top_approval: Label
 var top_gdp: Label
@@ -20,10 +19,9 @@ func _ready() -> void:
     _build_cabinet()
     _build_topbar()
     _build_left_nav()
-    _build_bottom_nav()
-    _build_info_panel()
     _build_section_panel()
     _build_event_strip()
+    _build_dynamic_hud()
     _build_version_badge()
     WorldState.country_selected.connect(_refresh_country)
     WorldState.simulation_changed.connect(_refresh_all)
@@ -42,7 +40,7 @@ func _build_map() -> void:
     map_view.name = "WorldMap"
     map_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     map_view.offset_top = 72
-    map_view.offset_bottom = -72
+    map_view.offset_bottom = -128
     map_view.offset_left = 74
     map_view.offset_right = -74
     map_view.set_script(load("res://scripts/world_map.gd"))
@@ -52,7 +50,7 @@ func _build_cabinet() -> void:
     cabinet_container = SubViewportContainer.new()
     cabinet_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     cabinet_container.offset_top = 72
-    cabinet_container.offset_bottom = -72
+    cabinet_container.offset_bottom = -128
     cabinet_container.offset_left = 74
     cabinet_container.offset_right = -74
     cabinet_container.stretch = true
@@ -106,7 +104,7 @@ func _build_left_nav() -> void:
     nav.offset_left = 12
     nav.offset_right = 64
     nav.offset_top = 118
-    nav.offset_bottom = -118
+    nav.offset_bottom = -138
     nav.add_theme_constant_override("separation", 6)
     var items = [
         ["GOV", "government"], ["ECO", "economy"], ["MIL", "military"],
@@ -120,44 +118,14 @@ func _build_left_nav() -> void:
         nav.add_child(b)
     add_child(nav)
 
-func _build_bottom_nav() -> void:
-    var nav := HBoxContainer.new()
-    nav.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-    nav.offset_left = 230
-    nav.offset_right = -230
-    nav.offset_top = -60
-    nav.offset_bottom = -10
-    nav.add_theme_constant_override("separation", 6)
-    var items = [
-        ["GABINETE", "cabinet"], ["ECONOMIA", "economy"], ["POLÍTICA", "government"],
-        ["MILITAR", "military"], ["DIPLOMACIA", "diplomacy"], ["MÍDIA", "media"], ["MAPA", "map"]
-    ]
-    for item in items:
-        var b := Button.new()
-        b.text = item[0]
-        b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        b.pressed.connect(_open_section.bind(item[1]))
-        nav.add_child(b)
-    add_child(nav)
-
-func _build_info_panel() -> void:
-    info_panel = PanelContainer.new()
-    info_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-    info_panel.offset_left = 88
-    info_panel.offset_right = 500
-    info_panel.offset_top = -118
-    info_panel.offset_bottom = -70
-    var box := HBoxContainer.new()
-    selected_label = Label.new()
-    selected_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    selected_label.add_theme_font_size_override("font_size", 15)
-    var dip := Button.new()
-    dip.text = "ABRIR PAÍS"
-    dip.pressed.connect(_open_section.bind("diplomacy"))
-    box.add_child(selected_label)
-    box.add_child(dip)
-    info_panel.add_child(box)
-    add_child(info_panel)
+func _build_dynamic_hud() -> void:
+    bottom_hud = Control.new()
+    bottom_hud.name = "DynamicBottomHUD"
+    bottom_hud.set_script(load("res://scripts/bottom_hud.gd"))
+    bottom_hud.section_requested.connect(_open_section)
+    add_child(bottom_hud)
+    bottom_hud.call("set_map_view", map_view)
+    bottom_hud.call("set_active_section", "map")
 
 func _build_section_panel() -> void:
     section_panel = PanelContainer.new()
@@ -165,7 +133,7 @@ func _build_section_panel() -> void:
     section_panel.offset_left = -520
     section_panel.offset_right = -18
     section_panel.offset_top = 78
-    section_panel.offset_bottom = -78
+    section_panel.offset_bottom = -128
     section_panel.visible = false
     var root := VBoxContainer.new()
     root.add_theme_constant_override("separation", 9)
@@ -205,15 +173,15 @@ func _build_event_strip() -> void:
 
 func _build_version_badge() -> void:
     var badge := Label.new()
-    badge.text = "v0.3 • GODOT"
+    badge.text = "v0.4 • DYNAMIC HUD"
     badge.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-    badge.offset_left = -170
-    badge.offset_right = -16
-    badge.offset_top = -34
-    badge.offset_bottom = -12
+    badge.offset_left = -210
+    badge.offset_right = -86
+    badge.offset_top = -142
+    badge.offset_bottom = -124
     badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-    badge.add_theme_font_size_override("font_size", 12)
-    badge.modulate = Color(0.55, 0.72, 0.78)
+    badge.add_theme_font_size_override("font_size", 11)
+    badge.modulate = Color(0.45, 0.75, 0.82)
     add_child(badge)
 
 func _build_startup_flow() -> void:
@@ -223,6 +191,8 @@ func _build_startup_flow() -> void:
     add_child(flow)
 
 func _open_section(section: String) -> void:
+    if bottom_hud != null and bottom_hud.has_method("set_active_section"):
+        bottom_hud.call("set_active_section", section)
     map_view.visible = section != "cabinet"
     cabinet_container.visible = section == "cabinet"
     if section in ["map", "cabinet"]:
@@ -315,9 +285,7 @@ func _refresh_country(_id: String) -> void:
     _refresh_all()
 
 func _refresh_all() -> void:
-    var selected := WorldState.selected_country()
     var player := WorldState.player_country()
-    selected_label.text = "%s  |  PODER %d/100" % [selected.get("name","País"), int(selected.get("military_power",0))]
     date_label.text = "%02d/%02d/%04d" % [WorldState.day, WorldState.month, WorldState.year]
     top_approval.text = "APROVAÇÃO %.0f%%" % float(player.get("approval",0.0))
     top_gdp.text = "PIB R$ %.2f tri" % float(player.get("gdp_trillion",0.0))
