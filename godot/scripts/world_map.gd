@@ -53,24 +53,40 @@ func _load_geojson() -> void:
     var parsed_dict: Dictionary = parsed as Dictionary
     features = parsed_dict.get("features", []) as Array
     labels.clear()
+
     for f_variant: Variant in features:
         var f: Dictionary = f_variant as Dictionary
         var props: Dictionary = f.get("properties", {}) as Dictionary
-        var name: String = str(props.get("ADMIN", props.get("name", "País")))
-        var iso: String = str(props.get("ADM0_A3", props.get("ISO_A3", "")))
-        if iso == "-99" or iso.is_empty():
-            iso = name.to_upper().replace(" ", "_")
-        f["_presim_id"] = iso
-        WorldState.merge_geo_country(iso, name)
+        var sovereign_name: String = str(props.get("SOVEREIGNT", props.get("ADMIN", "País")))
+        var sovereign_id: String = str(props.get("SOV_A3", props.get("ADM0_A3", "")))
+        if sovereign_id == "-99" or sovereign_id.is_empty():
+            sovereign_id = sovereign_name.to_upper().replace(" ", "_")
+
+        var unit_name: String = str(props.get("NAME_PT", ""))
+        if unit_name.is_empty():
+            unit_name = str(props.get("GEOUNIT", props.get("ADMIN", sovereign_name)))
+        var unit_id: String = str(props.get("GU_A3", props.get("ADM0_A3", sovereign_id)))
+
+        f["_presim_id"] = sovereign_id
+        f["_unit_id"] = unit_id
+        WorldState.merge_geo_country(sovereign_id, sovereign_name)
+
         var geom: Dictionary = f.get("geometry", {}) as Dictionary
         var coords: Variant = geom.get("coordinates", [])
         var gtype: String = str(geom.get("type", ""))
         var center_geo: Vector2 = _feature_geo_center(coords, gtype)
+        var label_x: Variant = props.get("LABEL_X", null)
+        var label_y: Variant = props.get("LABEL_Y", null)
+        if label_x != null and label_y != null:
+            center_geo = Vector2(float(label_x), float(label_y))
         labels.append({
-            "id": iso,
-            "name": name,
+            "id": sovereign_id,
+            "unit_id": unit_id,
+            "name": unit_name,
             "geo": center_geo,
-            "area_hint": _feature_area_hint(coords, gtype)
+            "area_hint": _feature_area_hint(coords, gtype),
+            "min_label": float(props.get("MIN_LABEL", 3.0)),
+            "homepart": int(props.get("HOMEPART", 1))
         })
 
 func reset_view() -> void:
@@ -185,10 +201,7 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
 func _project(coord: Array) -> Vector2:
     var lon: float = float(coord[0])
     var lat: float = float(coord[1])
-    var base: Vector2 = Vector2(
-        (lon + 180.0) / 360.0 * size.x,
-        (90.0 - lat) / 180.0 * size.y
-    )
+    var base := Vector2((lon + 180.0) / 360.0 * size.x, (90.0 - lat) / 180.0 * size.y)
     return base * zoom + pan
 
 func _draw() -> void:
@@ -213,53 +226,32 @@ func _draw() -> void:
 
 func _draw_world_base() -> void:
     if physical_texture != null:
-        draw_texture_rect(
-            physical_texture,
-            Rect2(pan, size * zoom),
-            false,
-            Color(0.72, 0.80, 0.82, 1.0)
-        )
-        draw_rect(Rect2(Vector2.ZERO, size), Color(0.015, 0.07, 0.10, 0.20), true)
+        draw_texture_rect(physical_texture, Rect2(pan, size * zoom), false, Color(0.76, 0.82, 0.82, 1.0))
+        draw_rect(Rect2(Vector2.ZERO, size), Color(0.01, 0.05, 0.07, 0.18), true)
         return
-    _draw_ocean_background()
-
-func _draw_ocean_background() -> void:
-    var bands: int = 18
-    for i: int in range(bands):
-        var t: float = float(i) / float(maxi(1, bands - 1))
-        var y: float = size.y * float(i) / float(bands)
-        var h: float = size.y / float(bands) + 1.0
-        var top: Color = Color(0.018, 0.085, 0.125, 1.0)
-        var bottom: Color = Color(0.012, 0.045, 0.075, 1.0)
-        var c: Color = top.lerp(bottom, t)
-        draw_rect(Rect2(0.0, y, size.x, h), c)
-    draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.16, 0.22, 0.16))
+    draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.08, 0.12, 1.0), true)
 
 func _draw_geo_grid() -> void:
-    var grid_color: Color = Color(0.55, 0.78, 0.84, 0.055)
+    var grid_color := Color(0.55, 0.78, 0.84, 0.045)
     for lon: int in range(-150, 180, 30):
-        var a: Vector2 = _project([float(lon), -90.0])
-        var b: Vector2 = _project([float(lon), 90.0])
-        draw_line(a, b, grid_color, 1.0)
+        draw_line(_project([float(lon), -90.0]), _project([float(lon), 90.0]), grid_color, 1.0)
     for lat: int in range(-60, 90, 30):
-        var a: Vector2 = _project([-180.0, float(lat)])
-        var b: Vector2 = _project([180.0, float(lat)])
-        draw_line(a, b, grid_color, 1.0)
+        draw_line(_project([-180.0, float(lat)]), _project([180.0, float(lat)]), grid_color, 1.0)
 
 func _draw_polygon_group(rings: Array, fill: Color, selected: bool) -> void:
     if rings.is_empty():
         return
-    var outer: PackedVector2Array = PackedVector2Array()
+    var outer := PackedVector2Array()
     for c_variant: Variant in rings[0] as Array:
         outer.append(_project(c_variant as Array))
     if outer.size() < 3:
         return
     draw_colored_polygon(outer, fill)
     if selected:
-        draw_polyline(outer, Color(0.10, 0.85, 1.0, 0.26), 6.0, true)
-        draw_polyline(outer, Color(0.58, 0.97, 1.0, 1.0), 2.2, true)
+        draw_polyline(outer, Color(0.10, 0.85, 1.0, 0.25), 6.0, true)
+        draw_polyline(outer, Color(0.62, 0.98, 1.0, 1.0), 2.2, true)
     else:
-        draw_polyline(outer, Color(0.74, 0.83, 0.82, 0.62), 1.0, true)
+        draw_polyline(outer, Color(0.76, 0.84, 0.82, 0.66), 1.0, true)
 
 func _draw_labels() -> void:
     var font: Font = get_theme_default_font()
@@ -268,47 +260,50 @@ func _draw_labels() -> void:
     ordered.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
         return float(a.get("area_hint", 0.0)) > float(b.get("area_hint", 0.0))
     )
+
     for item_variant: Variant in ordered:
         var item: Dictionary = item_variant as Dictionary
         var geo: Vector2 = item["geo"] as Vector2
         if geo == Vector2.INF:
             continue
-        var area_hint: float = float(item["area_hint"])
-        var min_zoom: float = _label_min_zoom(area_hint)
+        var min_zoom: float = _label_min_zoom(item)
         if zoom < min_zoom:
             continue
         var p: Vector2 = _project([geo.x, geo.y])
-        if p.x < -100.0 or p.y < -40.0 or p.x > size.x + 100.0 or p.y > size.y + 40.0:
+        if p.x < -120.0 or p.y < -50.0 or p.x > size.x + 120.0 or p.y > size.y + 50.0:
             continue
+
         var id: String = str(item["id"])
         var name: String = str(item["name"]).to_upper()
-        var font_size: int = int(clampf(10.0 + sqrt(zoom) * 2.3, 11.0, 18.0))
         var selected: bool = id == selected_id
+        var font_size: int = int(clampf(10.0 + sqrt(zoom) * 2.2, 11.0, 18.0))
         if selected:
             font_size += 2
         var text_size: Vector2 = font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-        var rect: Rect2 = Rect2(p - Vector2(text_size.x * 0.5 + 4.0, text_size.y * 0.5 + 3.0), text_size + Vector2(8.0, 6.0))
+        var rect := Rect2(p - Vector2(text_size.x * 0.5 + 5.0, text_size.y * 0.5 + 3.0), text_size + Vector2(10.0, 6.0))
         if not selected and _intersects_any(rect, occupied):
             continue
-        var color: Color = Color(0.96, 0.98, 0.97, 0.92)
+        var color := Color(0.97, 0.99, 0.98, 0.94)
         if selected:
             color = Color(0.64, 0.98, 1.0, 1.0)
-            draw_rect(rect, Color(0.02, 0.11, 0.14, 0.76), true)
+            draw_rect(rect, Color(0.02, 0.11, 0.14, 0.80), true)
         draw_string(font, p - Vector2(text_size.x * 0.5, -font_size * 0.35), name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
         occupied.append(rect)
 
-func _label_min_zoom(area_hint: float) -> float:
-    if area_hint >= 130.0:
-        return 1.0
-    if area_hint >= 50.0:
-        return 1.25
-    if area_hint >= 22.0:
-        return 1.7
-    if area_hint >= 10.0:
-        return 2.4
-    if area_hint >= 4.0:
-        return 3.3
-    return 4.6
+func _label_min_zoom(item: Dictionary) -> float:
+    var natural_min: float = float(item.get("min_label", 3.0))
+    var area_hint: float = float(item.get("area_hint", 0.0))
+    var homepart: int = int(item.get("homepart", 1))
+    var result: float = clampf(natural_min - 1.8, 1.0, 5.2)
+    if area_hint >= 60.0:
+        result = minf(result, 1.0)
+    elif area_hint >= 20.0:
+        result = minf(result, 1.6)
+    elif area_hint >= 6.0:
+        result = minf(result, 2.4)
+    if homepart == 0:
+        result = maxf(1.8, result - 0.4)
+    return result
 
 func _intersects_any(rect: Rect2, occupied: Array[Rect2]) -> bool:
     for other: Rect2 in occupied:
@@ -318,19 +313,13 @@ func _intersects_any(rect: Rect2, occupied: Array[Rect2]) -> bool:
 
 func _country_color(id: String) -> Color:
     if id == selected_id:
-        return Color(0.02, 0.52, 0.64, 0.48)
+        return Color(0.02, 0.52, 0.64, 0.44)
     var c: Dictionary = WorldState.countries.get(id, {}) as Dictionary
     if bool(c.get("war", false)):
-        return Color(0.64, 0.08, 0.08, 0.62)
+        return Color(0.64, 0.08, 0.08, 0.60)
     if bool(c.get("sanctioned", false)):
-        return Color(0.70, 0.39, 0.06, 0.50)
-    var stability: float = float(c.get("stability", 55.0))
-    var stability_t: float = clampf(stability / 100.0, 0.0, 1.0)
-    var hash_value: int = abs(id.hash()) % 100
-    var shift: float = float(hash_value) / 100.0
-    var cool: Color = Color(0.04, 0.15, 0.16, 0.20)
-    var warm: Color = Color(0.15, 0.19, 0.10, 0.22)
-    return cool.lerp(warm, 0.25 + shift * 0.45 + stability_t * 0.12)
+        return Color(0.70, 0.39, 0.06, 0.48)
+    return Color(0.04, 0.10, 0.10, 0.18)
 
 func _select_at(pos: Vector2) -> void:
     var best_id: String = ""
@@ -341,9 +330,9 @@ func _select_at(pos: Vector2) -> void:
         if geo == Vector2.INF:
             continue
         var center: Vector2 = _project([geo.x, geo.y])
-        var distance_to_country: float = center.distance_to(pos)
-        if distance_to_country < best_distance:
-            best_distance = distance_to_country
+        var d: float = center.distance_to(pos)
+        if d < best_distance:
+            best_distance = d
             best_id = str(item["id"])
     var threshold: float = clampf(72.0 + 12.0 * minf(zoom, 4.0), 72.0, 120.0)
     if not best_id.is_empty() and best_distance < threshold:
