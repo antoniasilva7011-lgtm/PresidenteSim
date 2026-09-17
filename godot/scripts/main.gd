@@ -185,9 +185,9 @@ func _build_event_strip() -> void:
 
 func _build_version_badge() -> void:
     var badge := Label.new()
-    badge.text = "v0.5 • COMMAND EXPERIENCE"
+    badge.text = "v0.6 • MAP + NEWS UPGRADE"
     badge.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-    badge.offset_left = -260
+    badge.offset_left = -270
     badge.offset_right = -86
     badge.offset_top = -136
     badge.offset_bottom = -120
