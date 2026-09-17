@@ -12,6 +12,7 @@ var player_country_id: String = "BRA"
 var player_leader_name: String = "Presidente"
 var player_party: String = "Independente"
 var game_difficulty: String = "Normal"
+var campaign_promise: String = "Estabilidade econômica"
 var countries: Dictionary = {}
 var treasury: float = 420.0
 var tax_rate: float = 28.0
@@ -21,9 +22,11 @@ var defense_spending: float = 1.4
 var press_relation: float = 52.0
 var global_tension: float = 24.0
 var last_event: Dictionary = {}
+var cabinet: Array[Dictionary] = []
 
 func _ready() -> void:
     _ensure_default_world()
+    _ensure_cabinet()
 
 func _ensure_default_world() -> void:
     if not countries.is_empty():
@@ -34,6 +37,17 @@ func _ensure_default_world() -> void:
     _add_country("RUS", "Rússia", 144000000, 2.20, 6.8, 2.4, 20.0, 91)
     _add_country("IND", "Índia", 1460000000, 4.30, 4.1, 7.0, 82.0, 86)
     _add_country("ARG", "Argentina", 46000000, 0.64, 18.0, 7.5, 84.0, 55)
+
+func _ensure_cabinet() -> void:
+    if not cabinet.is_empty():
+        return
+    cabinet = [
+        {"office":"Economia","name":"Marina Costa","competence":78,"loyalty":64,"risk":18},
+        {"office":"Defesa","name":"Rafael Nogueira","competence":74,"loyalty":72,"risk":12},
+        {"office":"Relações Exteriores","name":"Helena Duarte","competence":84,"loyalty":58,"risk":15},
+        {"office":"Justiça","name":"Caio Mendes","competence":71,"loyalty":61,"risk":24},
+        {"office":"Comunicação","name":"Lívia Rocha","competence":76,"loyalty":69,"risk":28}
+    ]
 
 func _add_country(id: String, name: String, population: int, gdp_t: float, inflation: float, unemployment: float, debt: float, power: int) -> void:
     countries[id] = {
@@ -77,7 +91,7 @@ func merge_geo_country(id: String, name: String) -> void:
         "war": false
     }
 
-func start_new_game(country_id: String, leader_name: String, party_name: String, difficulty: String) -> void:
+func start_new_game(country_id: String, leader_name: String, party_name: String, difficulty: String, promise: String = "Estabilidade econômica") -> void:
     if not countries.has(country_id):
         return
     player_country_id = country_id
@@ -85,10 +99,12 @@ func start_new_game(country_id: String, leader_name: String, party_name: String,
     player_leader_name = leader_name
     player_party = party_name
     game_difficulty = difficulty
+    campaign_promise = promise
     day = 15
     month = 9
     year = 2026
     last_event = {}
+    _ensure_cabinet()
     country_selected.emit(country_id)
     simulation_changed.emit()
 
@@ -201,6 +217,8 @@ func _maybe_event(days_elapsed: int) -> void:
         _make_event("Economia", "Inflação pressiona consumo e popularidade")
     elif global_tension > 55.0:
         _make_event("Mundo", "Tensão internacional cresce e mercados reagem")
+    elif press_relation < 35.0:
+        _make_event("Mídia", "Relação do governo com a imprensa entra em zona de tensão")
 
 func _make_event(category: String, headline: String) -> void:
     last_event = {
