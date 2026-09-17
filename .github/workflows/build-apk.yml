@@ -1,4 +1,3 @@
-
 name: Build Presidente Simulator APK
 
 on:
@@ -8,6 +7,13 @@ on:
       - main
     tags:
       - "v*"
+    paths:
+      - 'main.py'
+      - 'v*.py'
+      - 'countries_data.py'
+      - 'buildozer.spec'
+      - 'assets/**'
+      - '.github/workflows/build-apk.yml'
 
 jobs:
   build:
