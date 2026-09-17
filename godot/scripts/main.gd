@@ -6,9 +6,13 @@ var cabinet_viewport: SubViewport
 var info_panel: PanelContainer
 var section_panel: PanelContainer
 var title_label: Label
-var content_label: Label
+var content_box: VBoxContainer
 var selected_label: Label
 var date_label: Label
+var top_approval: Label
+var top_gdp: Label
+var top_inflation: Label
+var event_label: Label
 
 func _ready() -> void:
     _build_background()
@@ -19,8 +23,10 @@ func _ready() -> void:
     _build_bottom_nav()
     _build_info_panel()
     _build_section_panel()
+    _build_event_strip()
     WorldState.country_selected.connect(_refresh_country)
     WorldState.simulation_changed.connect(_refresh_all)
+    WorldState.event_created.connect(_show_event)
     _refresh_all()
 
 func _build_background() -> void:
@@ -63,49 +69,51 @@ func _build_cabinet() -> void:
 func _build_topbar() -> void:
     var top := HBoxContainer.new()
     top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-    top.offset_left = 120
-    top.offset_right = -120
-    top.offset_top = 10
-    top.offset_bottom = 62
-    top.add_theme_constant_override("separation", 20)
-    for text in ["APROVAÇÃO 57%", "PIB R$ 12,4 tri", "INFLAÇÃO 4,8%"]:
-        var l := Label.new()
-        l.text = text
-        l.add_theme_font_size_override("font_size", 17)
-        top.add_child(l)
-    date_label = Label.new()
-    date_label.add_theme_font_size_override("font_size", 17)
+    top.offset_left = 102
+    top.offset_right = -102
+    top.offset_top = 8
+    top.offset_bottom = 60
+    top.add_theme_constant_override("separation", 18)
+    top_approval = _top_stat()
+    top_gdp = _top_stat()
+    top_inflation = _top_stat()
+    date_label = _top_stat()
+    top.add_child(top_approval)
+    top.add_child(top_gdp)
+    top.add_child(top_inflation)
     top.add_child(date_label)
     var spacer := Control.new()
     spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     top.add_child(spacer)
-    var play := Button.new()
-    play.text = "▶"
-    play.pressed.connect(func(): WorldState.advance_days(1))
-    top.add_child(play)
     for pair in [["1D",1],["7D",7],["30D",30]]:
         var b := Button.new()
         b.text = pair[0]
+        b.custom_minimum_size = Vector2(62, 42)
         b.pressed.connect(func(days=pair[1]): WorldState.advance_days(days))
         top.add_child(b)
     add_child(top)
+
+func _top_stat() -> Label:
+    var l := Label.new()
+    l.add_theme_font_size_override("font_size", 16)
+    return l
 
 func _build_left_nav() -> void:
     var nav := VBoxContainer.new()
     nav.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
     nav.offset_left = 12
-    nav.offset_right = 66
-    nav.offset_top = 120
-    nav.offset_bottom = -120
+    nav.offset_right = 64
+    nav.offset_top = 118
+    nav.offset_bottom = -118
     nav.add_theme_constant_override("separation", 6)
     var items = [
         ["GOV", "government"], ["ECO", "economy"], ["MIL", "military"],
-        ["DIP", "diplomacy"], ["MID", "media"], ["MAP", "map"]
+        ["DIP", "diplomacy"], ["MID", "media"], ["MAP", "map"], ["CAB", "cabinet"]
     ]
     for item in items:
         var b := Button.new()
         b.text = item[0]
-        b.custom_minimum_size = Vector2(52, 54)
+        b.custom_minimum_size = Vector2(50, 48)
         b.pressed.connect(_open_section.bind(item[1]))
         nav.add_child(b)
     add_child(nav)
@@ -113,10 +121,10 @@ func _build_left_nav() -> void:
 func _build_bottom_nav() -> void:
     var nav := HBoxContainer.new()
     nav.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-    nav.offset_left = 260
-    nav.offset_right = -260
-    nav.offset_top = -62
-    nav.offset_bottom = -12
+    nav.offset_left = 230
+    nav.offset_right = -230
+    nav.offset_top = -60
+    nav.offset_bottom = -10
     nav.add_theme_constant_override("separation", 6)
     var items = [
         ["GABINETE", "cabinet"], ["ECONOMIA", "economy"], ["POLÍTICA", "government"],
@@ -134,14 +142,15 @@ func _build_info_panel() -> void:
     info_panel = PanelContainer.new()
     info_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
     info_panel.offset_left = 88
-    info_panel.offset_right = 460
+    info_panel.offset_right = 500
     info_panel.offset_top = -118
-    info_panel.offset_bottom = -72
+    info_panel.offset_bottom = -70
     var box := HBoxContainer.new()
     selected_label = Label.new()
     selected_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    selected_label.add_theme_font_size_override("font_size", 15)
     var dip := Button.new()
-    dip.text = "DIPLOMACIA"
+    dip.text = "ABRIR PAÍS"
     dip.pressed.connect(_open_section.bind("diplomacy"))
     box.add_child(selected_label)
     box.add_child(dip)
@@ -151,36 +160,46 @@ func _build_info_panel() -> void:
 func _build_section_panel() -> void:
     section_panel = PanelContainer.new()
     section_panel.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
-    section_panel.offset_left = -430
+    section_panel.offset_left = -520
     section_panel.offset_right = -18
-    section_panel.offset_top = 84
-    section_panel.offset_bottom = -84
+    section_panel.offset_top = 78
+    section_panel.offset_bottom = -78
     section_panel.visible = false
     var root := VBoxContainer.new()
-    root.add_theme_constant_override("separation", 10)
+    root.add_theme_constant_override("separation", 9)
     var header := HBoxContainer.new()
     title_label = Label.new()
     title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     title_label.add_theme_font_size_override("font_size", 24)
     var close := Button.new()
     close.text = "X"
+    close.custom_minimum_size = Vector2(48, 42)
     close.pressed.connect(func(): section_panel.visible = false)
     header.add_child(title_label)
     header.add_child(close)
     root.add_child(header)
-    content_label = Label.new()
-    content_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    content_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    content_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-    content_label.add_theme_font_size_override("font_size", 18)
-    root.add_child(content_label)
-    var action := Button.new()
-    action.name = "ActionButton"
-    action.text = "EXECUTAR AÇÃO"
-    action.pressed.connect(_section_action)
-    root.add_child(action)
+    var scroll := ScrollContainer.new()
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    content_box = VBoxContainer.new()
+    content_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    content_box.add_theme_constant_override("separation", 8)
+    scroll.add_child(content_box)
+    root.add_child(scroll)
     section_panel.add_child(root)
     add_child(section_panel)
+
+func _build_event_strip() -> void:
+    var panel := PanelContainer.new()
+    panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+    panel.offset_left = 560
+    panel.offset_right = -560
+    panel.offset_top = 62
+    panel.offset_bottom = 96
+    event_label = Label.new()
+    event_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    event_label.add_theme_font_size_override("font_size", 14)
+    panel.add_child(event_label)
+    add_child(panel)
 
 func _open_section(section: String) -> void:
     map_view.visible = section != "cabinet"
@@ -192,55 +211,100 @@ func _open_section(section: String) -> void:
     section_panel.set_meta("section", section)
     _refresh_section(section)
 
-func _refresh_section(section: String) -> void:
-    var c := WorldState.selected_country()
-    match section:
-        "economy":
-            title_label.text = "ECONOMIA"
-            content_label.text = "PIB: R$ %.2f tri\nInflação: %.1f%%\nDesemprego: %.1f%%\nDívida/PIB: %.1f%%\n\nDecisões econômicas alteram crescimento, aprovação e estabilidade." % [c.get("gdp_trillion",0.0), c.get("inflation",0.0), c.get("unemployment",0.0), c.get("debt_gdp",0.0)]
-        "government":
-            title_label.text = "GOVERNO / POLÍTICA"
-            content_label.text = "Aprovação: %.1f%%\nEstabilidade: %.1f%%\n\nGabinete, Congresso, leis, crises e resposta pública serão conectados neste módulo." % [c.get("approval",0.0), c.get("stability",0.0)]
-        "military":
-            title_label.text = "FORÇAS ARMADAS"
-            content_label.text = "Poder militar: %d/100\n\nPróximo estágio: tropas, bases, marinha, aviação, alcance e linhas de frente no mapa." % int(c.get("military_power",0))
-        "diplomacy":
-            title_label.text = "DIPLOMACIA"
-            content_label.text = "País selecionado: %s\nRelações bilaterais, comércio, sanções, alianças e negociação ficam aqui." % c.get("name","-")
-        "media":
-            title_label.text = "MÍDIA / IMPRENSA"
-            content_label.text = "Telejornal, jornais, redes sociais e coletivas serão alimentados pelo mesmo estado da simulação."
+func _clear_content() -> void:
+    for child in content_box.get_children():
+        child.queue_free()
 
-func _section_action() -> void:
-    var section := str(section_panel.get_meta("section", ""))
+func _label(text: String, size := 17) -> Label:
+    var l := Label.new()
+    l.text = text
+    l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    l.add_theme_font_size_override("font_size", size)
+    l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    return l
+
+func _button(text: String, callback: Callable) -> Button:
+    var b := Button.new()
+    b.text = text
+    b.custom_minimum_size = Vector2(0, 46)
+    b.pressed.connect(callback)
+    return b
+
+func _refresh_section(section: String) -> void:
+    _clear_content()
     var c := WorldState.selected_country()
     match section:
-        "economy":
-            c["approval"] = clamp(float(c.get("approval",57.0)) + 0.5, 0.0, 100.0)
-            c["debt_gdp"] = float(c.get("debt_gdp",70.0)) + 0.2
-            WorldState.countries[WorldState.selected_country_id] = c
-        "government":
-            c["stability"] = clamp(float(c.get("stability",60.0)) + 0.6, 0.0, 100.0)
-            WorldState.countries[WorldState.selected_country_id] = c
-        "military":
-            c["military_power"] = min(100, int(c.get("military_power",50)) + 1)
-            WorldState.countries[WorldState.selected_country_id] = c
-        "diplomacy":
-            if WorldState.selected_country_id != "BRA":
-                WorldState.set_relation("BRA", WorldState.selected_country_id, int(WorldState.countries["BRA"]["relations"].get(WorldState.selected_country_id,0)) + 5)
-        "media":
-            WorldState.advance_days(1)
-    _refresh_all()
+        "economy": _build_economy(c)
+        "government": _build_government(c)
+        "military": _build_military(c)
+        "diplomacy": _build_diplomacy(c)
+        "media": _build_media(c)
+
+func _build_economy(c: Dictionary) -> void:
+    title_label.text = "ECONOMIA"
+    content_box.add_child(_label("PIB: R$ %.2f tri\nInflação: %.1f%%\nDesemprego: %.1f%%\nDívida/PIB: %.1f%%\nTesouro: R$ %.1f bi" % [c.get("gdp_trillion",0.0), c.get("inflation",0.0), c.get("unemployment",0.0), c.get("debt_gdp",0.0), WorldState.treasury], 18))
+    content_box.add_child(_label("IMPOSTOS %.1f%%   |   JUROS %.1f%%   |   SOCIAL %.1f%%" % [WorldState.tax_rate, WorldState.interest_rate, WorldState.social_spending], 15))
+    content_box.add_child(_button("REDUZIR IMPOSTOS -1%", func(): WorldState.adjust_economy("tax", -1.0)))
+    content_box.add_child(_button("AUMENTAR IMPOSTOS +1%", func(): WorldState.adjust_economy("tax", 1.0)))
+    content_box.add_child(_button("REDUZIR JUROS -0,5%", func(): WorldState.adjust_economy("interest", -0.5)))
+    content_box.add_child(_button("AUMENTAR GASTO SOCIAL +1%", func(): WorldState.adjust_economy("social", 1.0)))
+
+func _build_government(c: Dictionary) -> void:
+    title_label.text = "GOVERNO / POLÍTICA"
+    content_box.add_child(_label("Aprovação: %.1f%%\nEstabilidade: %.1f%%\nRelação com imprensa: %.1f%%" % [c.get("approval",0.0), c.get("stability",0.0), WorldState.press_relation], 18))
+    content_box.add_child(_button("PRONUNCIAMENTO NACIONAL", func(): WorldState.political_action("speech")))
+    content_box.add_child(_button("ENVIAR REFORMA AO CONGRESSO", func(): WorldState.political_action("reform")))
+    content_box.add_child(_button("AVANÇAR 7 DIAS", func(): WorldState.advance_days(7)))
+
+func _build_military(c: Dictionary) -> void:
+    title_label.text = "FORÇAS ARMADAS"
+    content_box.add_child(_label("Poder militar: %d/100\nGasto de defesa: %.1f%% do PIB\nTensão global: %.1f%%" % [int(c.get("military_power",0)), WorldState.defense_spending, WorldState.global_tension], 18))
+    content_box.add_child(_button("REALIZAR EXERCÍCIO MILITAR", func(): WorldState.military_action("exercise")))
+    content_box.add_child(_button("MOBILIZAR FORÇAS", func(): WorldState.military_action("mobilize")))
+    content_box.add_child(_button("AUMENTAR ORÇAMENTO +0,2%", func(): WorldState.adjust_economy("defense", 0.2)))
+
+func _build_diplomacy(c: Dictionary) -> void:
+    title_label.text = "DIPLOMACIA"
+    var id := WorldState.selected_country_id
+    var relation := WorldState.relation_between(WorldState.player_country_id, id)
+    content_box.add_child(_label("%s\nPopulação: %s\nPIB: %.2f tri\nPoder militar: %d/100\nRelação com Brasil: %+d" % [c.get("name","-"), _fmt_population(int(c.get("population",0))), c.get("gdp_trillion",0.0), int(c.get("military_power",0)), relation], 18))
+    if id != WorldState.player_country_id:
+        content_box.add_child(_button("NEGOCIAR (+5 RELAÇÃO)", func(): WorldState.negotiate_with(id)))
+        content_box.add_child(_button("IMPOSTAR SANÇÕES", func(): WorldState.impose_sanctions(id)))
+    content_box.add_child(_label("PAÍSES CARREGADOS: %d" % WorldState.countries.size(), 15))
+
+func _build_media(_c: Dictionary) -> void:
+    title_label.text = "MÍDIA / IMPRENSA"
+    var headline := "Nenhum grande evento no momento."
+    if not WorldState.last_event.is_empty():
+        headline = "%s | %s" % [WorldState.last_event.get("category","Geral"), WorldState.last_event.get("headline","")]
+    content_box.add_child(_label("Relação com imprensa: %.1f%%\n\n%s" % [WorldState.press_relation, headline], 18))
+    content_box.add_child(_button("CONVOCAR COLETIVA", func(): WorldState.political_action("speech")))
+    content_box.add_child(_button("AVANÇAR 30 DIAS", func(): WorldState.advance_days(30)))
+
+func _fmt_population(value: int) -> String:
+    if value >= 1000000000:
+        return "%.2f bi" % (float(value) / 1000000000.0)
+    if value >= 1000000:
+        return "%.1f mi" % (float(value) / 1000000.0)
+    return str(value)
 
 func _refresh_country(_id: String) -> void:
     _refresh_all()
 
 func _refresh_all() -> void:
-    var c := WorldState.selected_country()
-    selected_label.text = "%s  |  PODER %d/100" % [c.get("name","País"), int(c.get("military_power",0))]
+    var selected := WorldState.selected_country()
+    var player := WorldState.player_country()
+    selected_label.text = "%s  |  PODER %d/100" % [selected.get("name","País"), int(selected.get("military_power",0))]
     date_label.text = "%02d/%02d/%04d" % [WorldState.day, WorldState.month, WorldState.year]
+    top_approval.text = "APROVAÇÃO %.0f%%" % float(player.get("approval",0.0))
+    top_gdp.text = "PIB R$ %.2f tri" % float(player.get("gdp_trillion",0.0))
+    top_inflation.text = "INFLAÇÃO %.1f%%" % float(player.get("inflation",0.0))
     if section_panel.visible:
         _refresh_section(str(section_panel.get_meta("section", "government")))
+
+func _show_event(event: Dictionary) -> void:
+    event_label.text = "%s: %s" % [event.get("category","Geral"), event.get("headline","")]
 
 func _on_cabinet_hotspot(action: String) -> void:
     match action:
