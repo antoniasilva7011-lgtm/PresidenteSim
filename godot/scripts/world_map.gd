@@ -17,6 +17,7 @@ var brazil_state_labels: Array = []
 var physical_texture: Texture2D = null
 var zoom: float = 1.0
 var pan: Vector2 = Vector2.ZERO
+var map_mode: String = "political"
 var _touches: Dictionary = {}
 var _touch_start: Dictionary = {}
 var _moved: Dictionary = {}
@@ -35,6 +36,12 @@ func _ready() -> void:
     _load_physical_texture()
     WorldState.country_selected.connect(_on_country_selected)
     resized.connect(_on_resized)
+    queue_redraw()
+
+func set_map_mode(mode: String) -> void:
+    if mode not in ["political", "economic", "military", "diplomatic", "conflict"]:
+        return
+    map_mode = mode
     queue_redraw()
 
 func _on_resized() -> void:
@@ -263,10 +270,13 @@ func _draw() -> void:
 
 func _draw_world_base() -> void:
     if physical_texture != null:
-        draw_texture_rect(physical_texture, Rect2(pan, size * zoom), false, Color(0.72, 0.78, 0.76, 1.0))
+        var tint := Color(0.72, 0.78, 0.76, 1.0)
+        if map_mode == "economic": tint = Color(0.76, 0.74, 0.65, 1.0)
+        elif map_mode == "military": tint = Color(0.62, 0.68, 0.66, 1.0)
+        elif map_mode == "diplomatic": tint = Color(0.65, 0.73, 0.78, 1.0)
+        elif map_mode == "conflict": tint = Color(0.58, 0.60, 0.58, 1.0)
+        draw_texture_rect(physical_texture, Rect2(pan, size * zoom), false, tint)
         draw_rect(Rect2(Vector2.ZERO, size), Color(0.005, 0.028, 0.045, 0.26), true)
-        var horizon := Rect2(Vector2(0, size.y * 0.52), Vector2(size.x, size.y * 0.48))
-        draw_rect(horizon, Color(0.0, 0.02, 0.035, 0.08), true)
         return
     draw_rect(Rect2(Vector2.ZERO, size), Color(0.012, 0.055, 0.082, 1.0), true)
 
@@ -341,9 +351,6 @@ func _draw_labels() -> void:
         var id: String = str(item["id"])
         var name: String = str(item["name"]).to_upper()
         var selected: bool = id == selected_id
-        if selected and id == "BRA" and zoom >= BRAZIL_STATE_LABEL_MIN_ZOOM:
-            # At close zoom the state names become primary; keep country label smaller.
-            name = "BRASIL"
         var font_size: int = int(clampf(10.0 + sqrt(zoom) * 2.1, 11.0, 18.0))
         if selected:
             font_size += 2
@@ -410,13 +417,37 @@ func _intersects_any(rect: Rect2, occupied: Array[Rect2]) -> bool:
 
 func _country_color(id: String) -> Color:
     if id == selected_id:
-        return Color(0.015, 0.42, 0.54, 0.36)
+        return Color(0.015, 0.42, 0.54, 0.40)
     var c: Dictionary = WorldState.countries.get(id, {}) as Dictionary
-    if bool(c.get("war", false)):
-        return Color(0.64, 0.08, 0.08, 0.58)
-    if bool(c.get("sanctioned", false)):
-        return Color(0.70, 0.39, 0.06, 0.44)
-    return Color(0.015, 0.055, 0.060, 0.12)
+    match map_mode:
+        "economic":
+            var gdp := float(c.get("gdp_trillion", 0.0))
+            var t := clampf(log(1.0 + gdp) / 3.5, 0.0, 1.0)
+            return Color(0.08 + 0.10 * t, 0.24 + 0.35 * t, 0.16 + 0.18 * t, 0.42)
+        "military":
+            var power := float(c.get("military_power", 0)) / 100.0
+            return Color(0.18 + 0.45 * power, 0.12, 0.10, 0.40)
+        "diplomatic":
+            var rel := WorldState.relation_between(WorldState.player_country_id, id)
+            if id == WorldState.player_country_id:
+                return Color(0.05, 0.44, 0.58, 0.42)
+            if rel >= 25:
+                return Color(0.08, 0.45, 0.24, 0.42)
+            if rel <= -25:
+                return Color(0.55, 0.10, 0.12, 0.45)
+            return Color(0.30, 0.30, 0.20, 0.28)
+        "conflict":
+            if bool(c.get("war", false)):
+                return Color(0.75, 0.04, 0.04, 0.64)
+            if bool(c.get("sanctioned", false)):
+                return Color(0.75, 0.38, 0.04, 0.48)
+            return Color(0.025, 0.045, 0.05, 0.20)
+        _:
+            if bool(c.get("war", false)):
+                return Color(0.64, 0.08, 0.08, 0.58)
+            if bool(c.get("sanctioned", false)):
+                return Color(0.70, 0.39, 0.06, 0.44)
+            return Color(0.015, 0.055, 0.060, 0.12)
 
 func _select_at(pos: Vector2) -> void:
     var best_id: String = ""
