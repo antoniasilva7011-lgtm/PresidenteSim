@@ -3,11 +3,13 @@ extends Control
 signal country_clicked(country_id: String)
 
 const GEOJSON_PATH: String = "res://data/world.geojson"
+const TEXTURE_PATH: String = "res://data/world_texture.jpg"
 const MIN_ZOOM: float = 1.0
 const MAX_ZOOM: float = 8.0
 
 var features: Array = []
 var labels: Array = []
+var physical_texture: Texture2D = null
 var zoom: float = 1.0
 var pan: Vector2 = Vector2.ZERO
 var _touches: Dictionary = {}
@@ -24,6 +26,7 @@ var selected_id: String = "BRA"
 func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     _load_geojson()
+    _load_physical_texture()
     WorldState.country_selected.connect(_on_country_selected)
     resized.connect(_on_resized)
     queue_redraw()
@@ -31,6 +34,12 @@ func _ready() -> void:
 func _on_resized() -> void:
     _clamp_pan()
     queue_redraw()
+
+func _load_physical_texture() -> void:
+    if ResourceLoader.exists(TEXTURE_PATH):
+        physical_texture = load(TEXTURE_PATH) as Texture2D
+    else:
+        push_warning("world_texture.jpg ausente; usando fundo procedural.")
 
 func _load_geojson() -> void:
     if not FileAccess.file_exists(GEOJSON_PATH):
@@ -183,7 +192,7 @@ func _project(coord: Array) -> Vector2:
     return base * zoom + pan
 
 func _draw() -> void:
-    _draw_ocean_background()
+    _draw_world_base()
     _draw_geo_grid()
     if features.is_empty():
         _draw_missing_data()
@@ -202,6 +211,18 @@ func _draw() -> void:
                 _draw_polygon_group(poly_variant as Array, fill, id == selected_id)
     _draw_labels()
 
+func _draw_world_base() -> void:
+    if physical_texture != null:
+        draw_texture_rect(
+            physical_texture,
+            Rect2(pan, size * zoom),
+            false,
+            Color(0.72, 0.80, 0.82, 1.0)
+        )
+        draw_rect(Rect2(Vector2.ZERO, size), Color(0.015, 0.07, 0.10, 0.20), true)
+        return
+    _draw_ocean_background()
+
 func _draw_ocean_background() -> void:
     var bands: int = 18
     for i: int in range(bands):
@@ -215,7 +236,7 @@ func _draw_ocean_background() -> void:
     draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.16, 0.22, 0.16))
 
 func _draw_geo_grid() -> void:
-    var grid_color: Color = Color(0.42, 0.72, 0.82, 0.075)
+    var grid_color: Color = Color(0.55, 0.78, 0.84, 0.055)
     for lon: int in range(-150, 180, 30):
         var a: Vector2 = _project([float(lon), -90.0])
         var b: Vector2 = _project([float(lon), 90.0])
@@ -235,10 +256,10 @@ func _draw_polygon_group(rings: Array, fill: Color, selected: bool) -> void:
         return
     draw_colored_polygon(outer, fill)
     if selected:
-        draw_polyline(outer, Color(0.10, 0.85, 1.0, 0.28), 5.0, true)
-        draw_polyline(outer, Color(0.55, 0.96, 1.0, 1.0), 2.0, true)
+        draw_polyline(outer, Color(0.10, 0.85, 1.0, 0.26), 6.0, true)
+        draw_polyline(outer, Color(0.58, 0.97, 1.0, 1.0), 2.2, true)
     else:
-        draw_polyline(outer, Color(0.38, 0.70, 0.76, 0.48), 1.0, true)
+        draw_polyline(outer, Color(0.74, 0.83, 0.82, 0.62), 1.0, true)
 
 func _draw_labels() -> void:
     var font: Font = get_theme_default_font()
@@ -269,10 +290,10 @@ func _draw_labels() -> void:
         var rect: Rect2 = Rect2(p - Vector2(text_size.x * 0.5 + 4.0, text_size.y * 0.5 + 3.0), text_size + Vector2(8.0, 6.0))
         if not selected and _intersects_any(rect, occupied):
             continue
-        var color: Color = Color(0.91, 0.96, 0.98, 0.88)
+        var color: Color = Color(0.96, 0.98, 0.97, 0.92)
         if selected:
-            color = Color(0.58, 0.96, 1.0, 1.0)
-            draw_rect(rect, Color(0.02, 0.13, 0.18, 0.62), true)
+            color = Color(0.64, 0.98, 1.0, 1.0)
+            draw_rect(rect, Color(0.02, 0.11, 0.14, 0.76), true)
         draw_string(font, p - Vector2(text_size.x * 0.5, -font_size * 0.35), name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
         occupied.append(rect)
 
@@ -297,21 +318,19 @@ func _intersects_any(rect: Rect2, occupied: Array[Rect2]) -> bool:
 
 func _country_color(id: String) -> Color:
     if id == selected_id:
-        return Color(0.07, 0.43, 0.52, 0.96)
+        return Color(0.02, 0.52, 0.64, 0.48)
     var c: Dictionary = WorldState.countries.get(id, {}) as Dictionary
     if bool(c.get("war", false)):
-        return Color(0.52, 0.13, 0.12, 0.97)
+        return Color(0.64, 0.08, 0.08, 0.62)
     if bool(c.get("sanctioned", false)):
-        return Color(0.43, 0.27, 0.10, 0.97)
+        return Color(0.70, 0.39, 0.06, 0.50)
     var stability: float = float(c.get("stability", 55.0))
     var stability_t: float = clampf(stability / 100.0, 0.0, 1.0)
     var hash_value: int = abs(id.hash()) % 100
-    var terrain_shift: float = float(hash_value) / 100.0
-    var low: Color = Color(0.16, 0.23, 0.18, 0.96)
-    var high: Color = Color(0.34, 0.38, 0.24, 0.96)
-    var base: Color = low.lerp(high, 0.25 + terrain_shift * 0.55)
-    var cool: Color = Color(0.12, 0.28, 0.29, 0.96)
-    return base.lerp(cool, (1.0 - stability_t) * 0.22)
+    var shift: float = float(hash_value) / 100.0
+    var cool: Color = Color(0.04, 0.15, 0.16, 0.20)
+    var warm: Color = Color(0.15, 0.19, 0.10, 0.22)
+    return cool.lerp(warm, 0.25 + shift * 0.45 + stability_t * 0.12)
 
 func _select_at(pos: Vector2) -> void:
     var best_id: String = ""
