@@ -2,12 +2,22 @@ extends Node
 
 signal country_selected(country_id: String)
 signal simulation_changed
+signal event_created(event: Dictionary)
 
 var day := 15
 var month := 9
 var year := 2026
 var selected_country_id := "BRA"
+var player_country_id := "BRA"
 var countries: Dictionary = {}
+var treasury := 420.0
+var tax_rate := 28.0
+var interest_rate := 10.5
+var social_spending := 18.0
+var defense_spending := 1.4
+var press_relation := 52.0
+var global_tension := 24.0
+var last_event: Dictionary = {}
 
 func _ready() -> void:
     _ensure_default_world()
@@ -34,11 +44,14 @@ func _add_country(id: String, name: String, population: int, gdp_t: float, infla
         "military_power": power,
         "stability": 68.0,
         "approval": 57.0,
-        "relations": {}
+        "relations": {},
+        "trade_balance": 0.0,
+        "sanctioned": false,
+        "war": false
     }
 
 func merge_geo_country(id: String, name: String) -> void:
-    if id.is_empty():
+    if id.is_empty() or id == "-99":
         id = name.to_upper().replace(" ", "_")
     if countries.has(id):
         countries[id]["name"] = name
@@ -55,7 +68,10 @@ func merge_geo_country(id: String, name: String) -> void:
         "military_power": 15 + seed % 81,
         "stability": 45.0 + float(seed % 500) / 10.0,
         "approval": 40.0 + float(seed % 350) / 10.0,
-        "relations": {}
+        "relations": {},
+        "trade_balance": float((seed % 400) - 200) / 10.0,
+        "sanctioned": false,
+        "war": false
     }
 
 func select_country(id: String) -> void:
@@ -67,6 +83,9 @@ func select_country(id: String) -> void:
 func selected_country() -> Dictionary:
     return countries.get(selected_country_id, {})
 
+func player_country() -> Dictionary:
+    return countries.get(player_country_id, {})
+
 func advance_days(amount: int) -> void:
     day += amount
     while day > 30:
@@ -76,15 +95,22 @@ func advance_days(amount: int) -> void:
         month -= 12
         year += 1
     _tick_economy(float(amount))
+    _maybe_event(amount)
     simulation_changed.emit()
 
 func _tick_economy(days_elapsed: float) -> void:
     for id in countries.keys():
         var c: Dictionary = countries[id]
-        var pressure := (c["inflation"] - 4.0) * 0.002 * days_elapsed
-        c["approval"] = clamp(c["approval"] - pressure, 0.0, 100.0)
-        c["stability"] = clamp(c["stability"] - max(0.0, pressure * 0.45), 0.0, 100.0)
+        var pressure := (float(c["inflation"]) - 4.0) * 0.002 * days_elapsed
+        c["approval"] = clamp(float(c["approval"]) - pressure, 0.0, 100.0)
+        c["stability"] = clamp(float(c["stability"]) - max(0.0, pressure * 0.45), 0.0, 100.0)
         countries[id] = c
+    var player := player_country()
+    var fiscal_flow := (tax_rate - social_spending - defense_spending * 2.0) * 0.02 * days_elapsed
+    treasury += fiscal_flow
+    player["inflation"] = clamp(float(player["inflation"]) + (social_spending - tax_rate * 0.35) * 0.0007 * days_elapsed - interest_rate * 0.00025 * days_elapsed, 0.1, 80.0)
+    player["unemployment"] = clamp(float(player["unemployment"]) + (interest_rate - 8.0) * 0.0005 * days_elapsed, 1.0, 40.0)
+    countries[player_country_id] = player
 
 func set_relation(a: String, b: String, value: int) -> void:
     if not countries.has(a) or not countries.has(b):
@@ -93,6 +119,73 @@ func set_relation(a: String, b: String, value: int) -> void:
     countries[b]["relations"][a] = clamp(value, -100, 100)
     simulation_changed.emit()
 
+func relation_between(a: String, b: String) -> int:
+    if not countries.has(a):
+        return 0
+    return int(countries[a]["relations"].get(b, 0))
+
 func negotiate_with(target: String) -> void:
-    var current := int(countries[selected_country_id]["relations"].get(target, 0))
-    set_relation(selected_country_id, target, current + 5)
+    if target == player_country_id or not countries.has(target):
+        return
+    var current := relation_between(player_country_id, target)
+    set_relation(player_country_id, target, current + 5)
+    press_relation = clamp(press_relation + 0.4, 0.0, 100.0)
+    _make_event("Diplomacia", "Negociação avança com %s" % countries[target]["name"])
+
+func impose_sanctions(target: String) -> void:
+    if target == player_country_id or not countries.has(target):
+        return
+    countries[target]["sanctioned"] = true
+    set_relation(player_country_id, target, relation_between(player_country_id, target) - 20)
+    global_tension = clamp(global_tension + 4.0, 0.0, 100.0)
+    _make_event("Diplomacia", "Brasil impõe sanções a %s" % countries[target]["name"])
+
+func adjust_economy(kind: String, delta: float) -> void:
+    match kind:
+        "tax": tax_rate = clamp(tax_rate + delta, 5.0, 60.0)
+        "interest": interest_rate = clamp(interest_rate + delta, 0.0, 40.0)
+        "social": social_spending = clamp(social_spending + delta, 1.0, 40.0)
+        "defense": defense_spending = clamp(defense_spending + delta, 0.2, 10.0)
+    simulation_changed.emit()
+
+func political_action(kind: String) -> void:
+    var c := player_country()
+    match kind:
+        "speech":
+            c["approval"] = clamp(float(c["approval"]) + 0.8, 0.0, 100.0)
+            press_relation = clamp(press_relation + 0.6, 0.0, 100.0)
+        "reform":
+            c["stability"] = clamp(float(c["stability"]) + 1.0, 0.0, 100.0)
+            c["approval"] = clamp(float(c["approval"]) - 0.3, 0.0, 100.0)
+    countries[player_country_id] = c
+    simulation_changed.emit()
+
+func military_action(kind: String) -> void:
+    var c := player_country()
+    match kind:
+        "exercise":
+            c["military_power"] = min(100, int(c["military_power"]) + 1)
+            treasury -= 1.2
+        "mobilize":
+            c["military_power"] = min(100, int(c["military_power"]) + 2)
+            global_tension = clamp(global_tension + 2.5, 0.0, 100.0)
+            treasury -= 2.5
+    countries[player_country_id] = c
+    simulation_changed.emit()
+
+func _maybe_event(days_elapsed: int) -> void:
+    if days_elapsed < 7:
+        return
+    var c := player_country()
+    if float(c["inflation"]) > 8.0:
+        _make_event("Economia", "Inflação pressiona consumo e popularidade")
+    elif global_tension > 55.0:
+        _make_event("Mundo", "Tensão internacional cresce e mercados reagem")
+
+func _make_event(category: String, headline: String) -> void:
+    last_event = {
+        "category": category,
+        "headline": headline,
+        "date": "%02d/%02d/%04d" % [day, month, year]
+    }
+    event_created.emit(last_event)
