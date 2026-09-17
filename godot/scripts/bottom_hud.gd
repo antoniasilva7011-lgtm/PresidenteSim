@@ -11,17 +11,29 @@ var relation_label: Label
 var action_box: HBoxContainer
 var context_title: Label
 var mode_label: Label
-var mode_buttons: Dictionary = {}
+var mode_drawer: PanelContainer
+var mode_drawer_open: bool = false
 var active_map_mode: String = "political"
+var swipe_start_y: float = 0.0
+var swipe_tracking: bool = false
+
+const MAP_MODES := [
+    ["POLÍTICO", "political", "Fronteiras, países e divisões administrativas"],
+    ["ECONÔMICO", "economic", "PIB, atividade e peso econômico"],
+    ["MILITAR", "military", "Gasto militar e capacidade estratégica"],
+    ["DIPLOMÁTICO", "diplomatic", "Comércio, diálogo, sanções e acordos"],
+    ["CONFLITOS", "conflict", "Guerras, tensões e sanções ativas"]
+]
 
 func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
     offset_left = 76
     offset_right = -76
-    offset_top = -106
+    offset_top = -108
     offset_bottom = -10
     _build_hud()
+    _build_mode_drawer()
     WorldState.country_selected.connect(_on_country_selected)
     WorldState.simulation_changed.connect(_refresh)
     _refresh()
@@ -40,12 +52,12 @@ func _build_hud() -> void:
     row.add_theme_constant_override("separation", 8)
     add_child(row)
     row.add_child(_build_country_card())
-    row.add_child(_build_map_controls())
+    row.add_child(_build_mode_selector())
     row.add_child(_build_context_actions())
 
 func _build_country_card() -> Control:
     var panel := PanelContainer.new()
-    panel.custom_minimum_size = Vector2(390, 0)
+    panel.custom_minimum_size = Vector2(420, 0)
     panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.050, 0.068, 0.97), Color(0.21, 0.63, 0.72, 0.58), 9))
     var root := HBoxContainer.new()
     root.add_theme_constant_override("separation", 10)
@@ -70,7 +82,8 @@ func _build_country_card() -> Control:
     country_stats.add_theme_font_size_override("font_size", 11)
     country_stats.modulate = Color(0.68, 0.79, 0.84)
     relation_label = Label.new()
-    relation_label.add_theme_font_size_override("font_size", 11)
+    relation_label.add_theme_font_size_override("font_size", 10)
+    relation_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     relation_label.modulate = Color(0.39, 0.88, 0.94)
     text.add_child(country_name)
     text.add_child(country_stats)
@@ -78,54 +91,110 @@ func _build_country_card() -> Control:
     root.add_child(text)
     return panel
 
-func _build_map_controls() -> Control:
+func _build_mode_selector() -> Control:
     var panel := PanelContainer.new()
     panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     panel.add_theme_stylebox_override("panel", _panel_style(Color(0.010, 0.024, 0.038, 0.965), Color(0.13, 0.25, 0.31, 0.64), 9))
-    var root := VBoxContainer.new()
-    root.add_theme_constant_override("separation", 3)
+    var root := HBoxContainer.new()
+    root.add_theme_constant_override("separation", 10)
     panel.add_child(root)
 
-    var head := HBoxContainer.new()
-    root.add_child(head)
+    var title_box := VBoxContainer.new()
+    title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     var title := Label.new()
-    title.text = "CAMADAS DO MAPA"
+    title.text = "VISUALIZAÇÃO DO MAPA"
     title.add_theme_font_size_override("font_size", 10)
     title.modulate = Color(0.46, 0.67, 0.73)
-    head.add_child(title)
-    var spacer := Control.new()
-    spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    head.add_child(spacer)
+    title_box.add_child(title)
     mode_label = Label.new()
     mode_label.text = "POLÍTICO"
-    mode_label.add_theme_font_size_override("font_size", 10)
-    mode_label.modulate = Color(0.35, 0.84, 0.90)
-    head.add_child(mode_label)
+    mode_label.add_theme_font_size_override("font_size", 17)
+    mode_label.modulate = Color(0.55, 0.94, 1.0)
+    title_box.add_child(mode_label)
+    var hint := Label.new()
+    hint.text = "TOQUE OU ARRASTE PARA CIMA"
+    hint.add_theme_font_size_override("font_size", 9)
+    hint.modulate = Color(0.48, 0.58, 0.63)
+    title_box.add_child(hint)
+    root.add_child(title_box)
 
-    var nav := HBoxContainer.new()
-    nav.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    nav.add_theme_constant_override("separation", 4)
-    root.add_child(nav)
-    var items := [
-        ["POLÍTICO", "political"], ["ECONÔMICO", "economic"],
-        ["MILITAR", "military"], ["DIPLOMÁTICO", "diplomatic"],
-        ["CONFLITOS", "conflict"]
-    ]
-    for item in items:
-        var button := Button.new()
-        button.text = item[0]
-        button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        button.custom_minimum_size = Vector2(100, 48)
-        button.focus_mode = Control.FOCUS_NONE
-        button.pressed.connect(_set_map_mode.bind(item[1]))
-        nav.add_child(button)
-        mode_buttons[item[1]] = button
-    _update_mode_state()
+    var open_button := Button.new()
+    open_button.text = "▲"
+    open_button.custom_minimum_size = Vector2(64, 64)
+    open_button.focus_mode = Control.FOCUS_NONE
+    open_button.pressed.connect(_toggle_mode_drawer)
+    root.add_child(open_button)
+
+    panel.gui_input.connect(_on_mode_selector_input)
     return panel
+
+func _build_mode_drawer() -> void:
+    mode_drawer = PanelContainer.new()
+    mode_drawer.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+    mode_drawer.offset_left = 430
+    mode_drawer.offset_right = -430
+    mode_drawer.offset_top = -430
+    mode_drawer.offset_bottom = -116
+    mode_drawer.visible = false
+    mode_drawer.z_index = 25
+    mode_drawer.add_theme_stylebox_override("panel", _panel_style(Color(0.008, 0.020, 0.032, 0.992), Color(0.25, 0.68, 0.78, 0.72), 12))
+    add_child(mode_drawer)
+
+    var root := VBoxContainer.new()
+    root.add_theme_constant_override("separation", 6)
+    mode_drawer.add_child(root)
+    var header := HBoxContainer.new()
+    root.add_child(header)
+    var title := Label.new()
+    title.text = "CAMADAS DO MAPA"
+    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    title.add_theme_font_size_override("font_size", 15)
+    header.add_child(title)
+    var close := Button.new()
+    close.text = "▼"
+    close.custom_minimum_size = Vector2(54, 40)
+    close.pressed.connect(_toggle_mode_drawer)
+    header.add_child(close)
+
+    for item in MAP_MODES:
+        var button := Button.new()
+        button.text = "%s\n%s" % [item[0], item[2]]
+        button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+        button.custom_minimum_size = Vector2(0, 52)
+        button.add_theme_font_size_override("font_size", 13)
+        button.focus_mode = Control.FOCUS_NONE
+        button.pressed.connect(_choose_map_mode.bind(item[1]))
+        root.add_child(button)
+
+func _toggle_mode_drawer() -> void:
+    mode_drawer_open = not mode_drawer_open
+    mode_drawer.visible = mode_drawer_open
+
+func _choose_map_mode(mode: String) -> void:
+    active_map_mode = mode
+    mode_label.text = _mode_name(mode)
+    mode_drawer_open = false
+    mode_drawer.visible = false
+    _apply_map_mode()
+
+func _on_mode_selector_input(event: InputEvent) -> void:
+    if event is InputEventScreenTouch:
+        var touch := event as InputEventScreenTouch
+        if touch.pressed:
+            swipe_start_y = touch.position.y
+            swipe_tracking = true
+        else:
+            swipe_tracking = false
+    elif event is InputEventScreenDrag and swipe_tracking:
+        var drag := event as InputEventScreenDrag
+        if swipe_start_y - drag.position.y > 34.0:
+            if not mode_drawer_open:
+                _toggle_mode_drawer()
+            swipe_tracking = false
 
 func _build_context_actions() -> Control:
     var panel := PanelContainer.new()
-    panel.custom_minimum_size = Vector2(410, 0)
+    panel.custom_minimum_size = Vector2(400, 0)
     panel.add_theme_stylebox_override("panel", _panel_style(Color(0.020, 0.040, 0.056, 0.97), Color(0.25, 0.39, 0.46, 0.55), 9))
     var root := VBoxContainer.new()
     root.add_theme_constant_override("separation", 3)
@@ -141,25 +210,9 @@ func _build_context_actions() -> Control:
     _rebuild_actions()
     return panel
 
-func _set_map_mode(mode: String) -> void:
-    active_map_mode = mode
-    _update_mode_state()
-    _apply_map_mode()
-
 func _apply_map_mode() -> void:
     if map_view != null and map_view.has_method("set_map_mode"):
         map_view.call("set_map_mode", active_map_mode)
-
-func _update_mode_state() -> void:
-    if mode_label != null:
-        mode_label.text = active_map_mode.to_upper()
-    for key in mode_buttons.keys():
-        var button: Button = mode_buttons[key] as Button
-        var active := str(key) == active_map_mode
-        button.add_theme_stylebox_override("normal", _button_style(active))
-        button.add_theme_stylebox_override("hover", _button_style(true))
-        button.add_theme_stylebox_override("pressed", _button_style(true))
-        button.add_theme_color_override("font_color", Color(0.76, 0.97, 1.0) if active else Color(0.70, 0.77, 0.81))
 
 func _refresh() -> void:
     if country_name == null:
@@ -167,16 +220,16 @@ func _refresh() -> void:
     var selected := WorldState.selected_country()
     var id: String = WorldState.selected_country_id
     var name: String = str(selected.get("name", "VISÃO GLOBAL"))
-    var power: int = int(selected.get("military_power", 0))
-    var stability: float = float(selected.get("stability", 0.0))
-    var relation: int = WorldState.relation_between(WorldState.player_country_id, id)
+    var gdp: float = float(selected.get("gdp_trillion", 0.0))
+    var military_spending: float = float(selected.get("military_spending_usd_b", -1.0))
+    var data_year: int = int(selected.get("data_year", 0))
     country_code.text = _short_code(id)
     country_name.text = name.to_upper()
-    country_stats.text = "PODER %d/100  •  ESTAB. %.0f%%" % [power, stability]
-    if id == WorldState.player_country_id:
-        relation_label.text = "SEU GOVERNO  •  %s" % WorldState.player_party.to_upper()
+    if military_spending >= 0.0:
+        country_stats.text = "PIB US$ %.2f tri • DEFESA US$ %.1f bi • %d" % [gdp, military_spending, data_year]
     else:
-        relation_label.text = "RELAÇÃO %+d  •  PAÍS SELECIONADO" % relation
+        country_stats.text = "PIB US$ %.2f tri • BASE PARCIAL" % gdp
+    relation_label.text = WorldState.bilateral_summary(WorldState.player_country_id, id)
     _rebuild_actions()
 
 func _on_country_selected(_id: String) -> void:
@@ -219,14 +272,21 @@ func _execute_action(action: String) -> void:
         "zoom_out":
             if map_view != null and map_view.has_method("zoom_by"):
                 map_view.call("zoom_by", 1.0 / 1.35)
-        "open_country":
-            section_requested.emit("diplomacy")
+        "open_country": section_requested.emit("diplomacy")
         "negotiate":
             if target != WorldState.player_country_id:
                 WorldState.negotiate_with(target)
         "sanctions":
             if target != WorldState.player_country_id:
                 WorldState.impose_sanctions(target)
+
+func _mode_name(mode: String) -> String:
+    match mode:
+        "economic": return "ECONÔMICO"
+        "military": return "MILITAR"
+        "diplomatic": return "DIPLOMÁTICO"
+        "conflict": return "CONFLITOS"
+        _: return "POLÍTICO"
 
 func _short_code(id: String) -> String:
     if id.length() <= 3:
