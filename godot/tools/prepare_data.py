@@ -13,7 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 DATA.mkdir(parents=True, exist_ok=True)
 
-GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson"
+GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_map_units.geojson"
 RASTER_URL = "https://naturalearth.s3.amazonaws.com/50m_raster/NE2_50M_SR.zip"
 GEOJSON_OUT = DATA / "world.geojson"
 TEXTURE_OUT = DATA / "world_texture.jpg"
@@ -23,7 +23,7 @@ def download(url: str, timeout: int) -> bytes:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "PresidenteSim-GitHubActions/0.2 (+https://github.com/antoniasilva7011-lgtm/PresidenteSim)",
+            "User-Agent": "PresidenteSim-GitHubActions/0.3 (+https://github.com/antoniasilva7011-lgtm/PresidenteSim)",
             "Accept": "*/*",
         },
     )
@@ -31,7 +31,7 @@ def download(url: str, timeout: int) -> bytes:
         return response.read()
 
 
-print(f"Downloading Natural Earth world countries -> {GEOJSON_OUT}")
+print(f"Downloading Natural Earth admin-0 map units -> {GEOJSON_OUT}")
 payload = download(GEOJSON_URL, 60)
 
 parsed = json.loads(payload.decode("utf-8"))
@@ -41,8 +41,17 @@ if parsed.get("type") != "FeatureCollection" or not parsed.get("features"):
 for feature in parsed["features"]:
     props = feature.get("properties", {})
     feature["properties"] = {
-        "ADMIN": props.get("ADMIN") or props.get("NAME") or "Unknown",
+        "ADMIN": props.get("ADMIN") or props.get("NAME_LONG") or props.get("NAME") or "Unknown",
+        "SOVEREIGNT": props.get("SOVEREIGNT") or props.get("ADMIN") or "Unknown",
+        "SOV_A3": props.get("SOV_A3") or props.get("ADM0_A3") or props.get("ISO_A3") or "",
         "ADM0_A3": props.get("ADM0_A3") or props.get("ISO_A3") or "",
+        "GEOUNIT": props.get("GEOUNIT") or props.get("NAME_LONG") or props.get("NAME") or "Unknown",
+        "GU_A3": props.get("GU_A3") or props.get("ADM0_A3") or props.get("ISO_A3") or "",
+        "TYPE": props.get("TYPE") or "",
+        "HOMEPART": props.get("HOMEPART", 1),
+        "MIN_LABEL": props.get("MIN_LABEL", 3),
+        "LABEL_X": props.get("LABEL_X"),
+        "LABEL_Y": props.get("LABEL_Y"),
         "ISO_A2": props.get("ISO_A2") or "",
         "CONTINENT": props.get("CONTINENT") or "",
         "REGION_UN": props.get("REGION_UN") or "",
@@ -52,7 +61,7 @@ GEOJSON_OUT.write_text(
     json.dumps(parsed, ensure_ascii=False, separators=(",", ":")),
     encoding="utf-8",
 )
-print(f"Prepared {len(parsed['features'])} map features ({GEOJSON_OUT.stat().st_size / 1024:.1f} KiB)")
+print(f"Prepared {len(parsed['features'])} map units ({GEOJSON_OUT.stat().st_size / 1024:.1f} KiB)")
 
 print(f"Downloading Natural Earth II shaded relief -> {TEXTURE_OUT}")
 raster_zip = download(RASTER_URL, 180)
