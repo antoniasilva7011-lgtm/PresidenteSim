@@ -4,9 +4,12 @@ signal country_clicked(country_id: String)
 
 const GEOJSON_PATH := "res://data/world.geojson"
 var features: Array = []
+var labels: Array = []
 var zoom := 1.0
 var pan := Vector2.ZERO
 var _touches: Dictionary = {}
+var _touch_start: Dictionary = {}
+var _moved: Dictionary = {}
 var _last_mouse := Vector2.ZERO
 var _mouse_dragging := false
 var _pinch_start_distance := 0.0
@@ -17,6 +20,7 @@ func _ready() -> void:
     mouse_filter = Control.MOUSE_FILTER_STOP
     _load_geojson()
     WorldState.country_selected.connect(_on_country_selected)
+    resized.connect(queue_redraw)
     queue_redraw()
 
 func _load_geojson() -> void:
@@ -29,14 +33,18 @@ func _load_geojson() -> void:
         push_error("GeoJSON inválido")
         return
     features = parsed.get("features", [])
+    labels.clear()
     for f in features:
         var props: Dictionary = f.get("properties", {})
         var name := str(props.get("ADMIN", props.get("name", "País")))
-        var iso := str(props.get("ADM0_A3", props.get("ISO_A3", props.get("ISO3166-1-Alpha-3", ""))))
+        var iso := str(props.get("ADM0_A3", props.get("ISO_A3", "")))
         if iso == "-99" or iso.is_empty():
             iso = name.to_upper().replace(" ", "_")
         f["_presim_id"] = iso
         WorldState.merge_geo_country(iso, name)
+        var geom: Dictionary = f.get("geometry", {})
+        var center_geo := _feature_geo_center(geom.get("coordinates", []), str(geom.get("type", "")))
+        labels.append({"id": iso, "name": name, "geo": center_geo, "area_hint": _feature_area_hint(geom.get("coordinates", []), str(geom.get("type", "")))})
 
 func reset_view() -> void:
     zoom = 1.0
@@ -47,7 +55,7 @@ func zoom_by(factor: float, focus := Vector2.ZERO) -> void:
     var old := zoom
     zoom = clamp(zoom * factor, 1.0, 8.0)
     if focus != Vector2.ZERO:
-        pan = focus - (focus - pan) * (zoom / old)
+        pan = focus - (focus - pan) * (zoom / max(old, 0.001))
     queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
@@ -77,21 +85,29 @@ func _gui_input(event: InputEvent) -> void:
 func _handle_touch(event: InputEventScreenTouch) -> void:
     if event.pressed:
         _touches[event.index] = event.position
+        _touch_start[event.index] = event.position
+        _moved[event.index] = false
         if _touches.size() == 2:
             var pts := _touches.values()
             _pinch_start_distance = pts[0].distance_to(pts[1])
             _pinch_start_zoom = zoom
+            for key in _moved.keys():
+                _moved[key] = true
     else:
-        var release_pos := event.position
-        var was_single := _touches.size() == 1
+        var should_select := not bool(_moved.get(event.index, false)) and _touches.size() == 1
         _touches.erase(event.index)
-        if was_single:
-            _select_at(release_pos)
+        _touch_start.erase(event.index)
+        _moved.erase(event.index)
+        if should_select:
+            _select_at(event.position)
         if _touches.size() < 2:
             _pinch_start_distance = 0.0
 
 func _handle_drag(event: InputEventScreenDrag) -> void:
     _touches[event.index] = event.position
+    var start: Vector2 = _touch_start.get(event.index, event.position)
+    if event.position.distance_to(start) > 8.0:
+        _moved[event.index] = true
     if _touches.size() == 1:
         pan += event.relative
         queue_redraw()
@@ -129,6 +145,7 @@ func _draw() -> void:
         elif gtype == "MultiPolygon":
             for poly in coords:
                 _draw_polygon_group(poly, fill)
+    _draw_labels()
 
 func _draw_polygon_group(rings: Array, fill: Color) -> void:
     if rings.is_empty():
@@ -138,12 +155,45 @@ func _draw_polygon_group(rings: Array, fill: Color) -> void:
         outer.append(_project(c))
     if outer.size() >= 3:
         draw_colored_polygon(outer, fill)
-        draw_polyline(outer, Color(0.15, 0.72, 0.95, 0.38), 1.0, true)
+        draw_polyline(outer, Color(0.15, 0.72, 0.95, 0.34), 1.0, true)
+
+func _draw_labels() -> void:
+    var font := get_theme_default_font()
+    for item in labels:
+        var geo: Vector2 = item["geo"]
+        if geo == Vector2.INF:
+            continue
+        var area_hint := float(item["area_hint"])
+        var min_zoom := 1.0
+        if area_hint < 4.0:
+            min_zoom = 4.0
+        elif area_hint < 12.0:
+            min_zoom = 2.5
+        elif area_hint < 30.0:
+            min_zoom = 1.7
+        if zoom < min_zoom:
+            continue
+        var p := _project([geo.x, geo.y])
+        if p.x < -80 or p.y < -30 or p.x > size.x + 80 or p.y > size.y + 30:
+            continue
+        var id := str(item["id"])
+        var name := str(item["name"]).to_upper()
+        var font_size := int(clamp(12.0 + zoom * 1.8, 12.0, 22.0))
+        var color := Color(0.95, 0.98, 1.0, 0.88)
+        if id == selected_id:
+            color = Color(0.30, 0.90, 1.0, 1.0)
+            font_size += 2
+        var width := font.get_string_size(name, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
+        draw_string(font, p - Vector2(width * 0.5, -font_size * 0.35), name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 func _country_color(id: String) -> Color:
     if id == selected_id:
         return Color(0.08, 0.58, 0.78, 0.95)
     var c: Dictionary = WorldState.countries.get(id, {})
+    if bool(c.get("war", false)):
+        return Color(0.55, 0.10, 0.12, 0.96)
+    if bool(c.get("sanctioned", false)):
+        return Color(0.45, 0.25, 0.08, 0.96)
     var stability := float(c.get("stability", 55.0))
     var t := clamp(stability / 100.0, 0.0, 1.0)
     return Color(0.05 + 0.08 * t, 0.16 + 0.22 * t, 0.20 + 0.16 * t, 0.96)
@@ -151,35 +201,57 @@ func _country_color(id: String) -> Color:
 func _select_at(pos: Vector2) -> void:
     var best_id := ""
     var best_distance := 99999.0
-    for f in features:
-        var id := str(f.get("_presim_id", ""))
-        var geom: Dictionary = f.get("geometry", {})
-        var coords = geom.get("coordinates", [])
-        var center := _feature_center(coords, str(geom.get("type", "")))
-        if center == Vector2.INF:
+    for item in labels:
+        var geo: Vector2 = item["geo"]
+        if geo == Vector2.INF:
             continue
+        var center := _project([geo.x, geo.y])
         var d := center.distance_to(pos)
         if d < best_distance:
             best_distance = d
-            best_id = id
-    if not best_id.is_empty() and best_distance < 120.0 * max(1.0, zoom):
+            best_id = str(item["id"])
+    var threshold := 95.0 + 30.0 * min(zoom, 3.0)
+    if not best_id.is_empty() and best_distance < threshold:
         WorldState.select_country(best_id)
         country_clicked.emit(best_id)
 
-func _feature_center(coords, gtype: String) -> Vector2:
+func _feature_geo_center(coords, gtype: String) -> Vector2:
+    var points: Array = []
+    if gtype == "Polygon" and coords.size() > 0:
+        points = coords[0]
+    elif gtype == "MultiPolygon" and coords.size() > 0:
+        var largest: Array = []
+        for poly in coords:
+            if poly.size() > 0 and poly[0].size() > largest.size():
+                largest = poly[0]
+        points = largest
+    if points.is_empty():
+        return Vector2.INF
+    var sum_lon := 0.0
+    var sum_lat := 0.0
+    for c in points:
+        sum_lon += float(c[0])
+        sum_lat += float(c[1])
+    return Vector2(sum_lon / points.size(), sum_lat / points.size())
+
+func _feature_area_hint(coords, gtype: String) -> float:
     var points: Array = []
     if gtype == "Polygon" and coords.size() > 0:
         points = coords[0]
     elif gtype == "MultiPolygon" and coords.size() > 0 and coords[0].size() > 0:
         points = coords[0][0]
     if points.is_empty():
-        return Vector2.INF
-    var sum := Vector2.ZERO
-    var count := 0
+        return 0.0
+    var min_lon := 999.0
+    var max_lon := -999.0
+    var min_lat := 999.0
+    var max_lat := -999.0
     for c in points:
-        sum += _project(c)
-        count += 1
-    return sum / max(1, count)
+        min_lon = min(min_lon, float(c[0]))
+        max_lon = max(max_lon, float(c[0]))
+        min_lat = min(min_lat, float(c[1]))
+        max_lat = max(max_lat, float(c[1]))
+    return abs(max_lon - min_lon) * abs(max_lat - min_lat)
 
 func _on_country_selected(id: String) -> void:
     selected_id = id
